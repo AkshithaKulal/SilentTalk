@@ -1,0 +1,62 @@
+=== Custom sentences (LoRA) ===
+EN: Good morning.
+KN: ಶುಭೋದಯ.
+
+EN: How are you?
+KN: ಹೇಗಿದ್ದೀಯ?
+
+EN: Where is the railway station?
+KN: ರೈಲ್ವೆ ನಿಲ್ದಾಣ ಎಲ್ಲಿದೆ?
+
+EN: I need a doctor.
+KN: ನನಗೆ ಡಾಕ್ಟರ್ ಬೇಕು.
+
+EN: The weather is nice today.
+KN: ಇಂದು ವಾತಾವರಣ ಚೆನ್ನಾಗಿದೆ.
+
+EN: Please help me.
+KN: ದಯವಿಟ್ಟು ನನಗೆ ಸಹಾಯ ಮಾಡಿ.
+
+EN: What is your name?
+KN: ನಿಮ್ಮ ಹೆಸರೇನು?
+
+EN: Thank you very much.
+KN: ತುಂಬಾ ಥ್ಯಾಂಕ್ಸ್ ಅಂದೆ.
+
+=== Dev set sample (50) with LoRA ===
+BLEU: 7.18
+chrF: 39.40
+
+--- First 8 Pred vs Ref ---
+[1] EN:  Click here...
+    PRED: ಇಲ್ಲಿ ಕ್ಲಿಕ್ ಮಾಡಿ.
+    REF:  ಕ್ಲಿಕ್ ಮಾಡಿ .
+
+[2] EN:  Home Ministers visit
+    PRED: ಗೃಹ ಸಚಿವರ ಭೇಟಿ
+    REF:  ಕೇಂದ್ರ ಗೃಹ ಮಂತ್ರಿ ಭೇಟಿ
+
+[3] EN:  The incident took place due to heavy rains.
+    PRED: ಭಾರೀ ಮಳೆಯಿಂದಾಗಿ ಈ ಅವಘಡ ಸಂಭವಿಸಿದೆ.
+    REF:  ಭೀಕರ ಬರಗಾಲದಿಂದ ಅಲ್ಪಸ್ವಲ್ಪ ನೀರಿದ್ದ ಕಾರಣ ಈ ಘಟನೆ ನಡೆದಿದೆ.
+
+[4] EN:  "In a bowl, mix the carrot, wheat flour and butter together."
+    PRED: "ಒಂದು ಬಟ್ಟಲಿನಲ್ಲಿ, ಗೋಧಿ ಹಿಟ್ಟು, ಬೆಣ್ಣೆ ಮತ್ತು ಬೆಣ್ಣೆಯನ್ನು ಮಿಶ್ರಣ ಮಾಡಿ."
+    REF:  "ಬಟ್ಟಲಿನಲ್ಲಿ, ಹಿಟ್ಟು, ಬೇಕಿಂಗ್ ಪೌಡರ್ ಮತ್ತು ಗಸಗಸೆಗಳನ್ನು ಬೆರೆಯಿರಿ ಮತ್ತು ಮಿಶ್ರಣ ಮಾಡಿ."
+
+[5] EN:  A person of broad discernment does not betray a confidence.
+    PRED: ವಿಶಾಲ ವಿವೇಚನೆಯುಳ್ಳ ವ್ಯಕ್ತಿಯು ಆತ್ಮವಿಶ್ವಾಸಕ್ಕೆ ದ್ರೋಹ ಮಾಡುವುದಿಲ್ಲ.
+    REF:  “ ವಿವೇಕಿಯು ” ನಂಬಿಕೆದ್ರೋಹ ಮಾಡುವುದಿಲ್ಲ.
+
+[6] EN:  The Congress and BJP are two sides of the same coin.
+    PRED: ಕಾಂಗ್ರೆಸ್ ಮತ್ತು ಬಿಜೆಪಿ ಒಂದೇ ನಾಣ್ಯದ ಎರಡು ಮುಖಗಳು.
+    REF:  ಬಿಜೆಪಿ ಮತ್ತು ಕಾಂಗ್ರೆಸ್ ಎರಡೂ ಒಂದೇ ನಾಣ್ಯದ ಎರಡು ಮುಖಗಳು.
+
+[7] EN:  "The family consists of parents, wife, a son and a daughter."
+    PRED: "ಕುಟುಂಬದಲ್ಲಿ ತಂದೆ-ತಾಯಿ, ಪತ್ನಿ, ಪುತ್ರ ಹಾಗೂ ಪುತ್ರಿ ಇದ್ದಾರೆ."
+    REF:  "ಆ ಗುಂಪಿನಲ್ಲಿ ತಾಯಿ, ತಂದೆ, ಮಗಳು, ಮಗ, ಇರುತ್ತಾರೆ."
+
+[8] EN:  I don't have a bank account.
+    PRED: ನನಗೆ ಯಾವುದೇ ಬ್ಯಾಂಕ್ ಖಾತೆ ಇಲ್ಲ.
+    REF:  ನನಗೆ ಬ್ಯಾಂಕ್ ಖಾತೆಯೇ ಇಲ್ಲ.
+

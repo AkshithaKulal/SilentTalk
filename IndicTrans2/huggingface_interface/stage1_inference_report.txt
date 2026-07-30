@@ -1,0 +1,10 @@
+Hello                          -> ನಮಸ್ಕಾರ.
+Thank you                      -> ವಂದನೆ ಸಲ್ಲಿಸಿದ್ದಾರೆ.
+Please                         -> ದಯವಿಟ್ಟು.
+Sorry                          -> ಕ್ಷಮಿಸಿ.
+I am hungry                    -> ನನಗೆ ಹಸಿವಾಗಿದೆ.
+Where is the hospital          -> ಆಸ್ಪತ್ರೆ ಎಲ್ಲಿದೆ?
+I need help                    -> ನನಗೆ ಸಹಾಯ ಬೇಕು.
+What is your name              -> ನಿಮ್ಮ ಹೆಸರೇನು?
+I am tired                     -> ನನಗೆ ಬೇಸರವಾಗಿದೆ.
+Come here                      -> ಇಲ್ಲಿಗೆ ಬನ್ನಿ.

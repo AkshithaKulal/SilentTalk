@@ -1,0 +1,39 @@
+# Python / env
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+*.log
+
+# Hugging Face / models (re-download on the other machine)
+**/model_cache/
+**/*.safetensors
+**/*.bin
+**/pytorch_model.bin
+
+# Large datasets
+**/samanantar_en_kn.csv
+**/stage1_data/
+**/stage2_data/
+**/*.csv.bak
+
+# Training outputs / checkpoints (large; copy separately if needed)
+**/stage1_output/
+**/stage2_output/
+**/runs/
+**/wandb/
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Nested git metadata from cloned toolkit if any
+# (keep toolkit source, ignore only heavy artifacts)
+IndicTrans2/huggingface_interface/IndicTransToolkit_repo/.git/
+
+# Temporary reports ok to keep small txt; ignore huge dumps
+**/tcywiki-latest-pages-articles.xml.bz2
