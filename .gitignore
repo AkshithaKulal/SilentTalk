@@ -9,9 +9,13 @@ venv/
 
 # Hugging Face / models (re-download on the other machine)
 **/model_cache/
-**/*.safetensors
-**/*.bin
 **/pytorch_model.bin
+
+# Ignore heavy weight files globally, then allow Stage 2 LoRA checkpoint artifacts
+**/*.safetensors
+!**/stage2_output/**/*.safetensors
+**/*.bin
+!**/stage2_output/**/*.bin
 
 # Large datasets
 **/samanantar_en_kn.csv
@@ -32,7 +36,6 @@ Thumbs.db
 .vscode/
 
 # Nested git metadata from cloned toolkit if any
-# (keep toolkit source, ignore only heavy artifacts)
 IndicTrans2/huggingface_interface/IndicTransToolkit_repo/.git/
 
 # Temporary reports ok to keep small txt; ignore huge dumps
