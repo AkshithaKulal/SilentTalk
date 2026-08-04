@@ -119,7 +119,14 @@ def extract_video(
     pose_landmarker,
     hand_landmarker,
     frame_stride: int,
-) -> tuple[np.ndarray, dict]:
+    timestamp_offset_ms: int = 0,
+) -> tuple[np.ndarray, dict, int]:
+    """Return features, meta, and next timestamp offset (ms) for VIDEO mode.
+
+    MediaPipe VIDEO mode requires timestamps to keep rising across the whole
+    landmarker lifetime — including across separate video files — so we carry
+    an offset from the previous clip.
+    """
     cap = cv2.VideoCapture(str(video_path))
     if not cap.isOpened():
         raise RuntimeError(f"Cannot open video: {video_path}")
@@ -129,6 +136,7 @@ def extract_video(
     feats: list[np.ndarray] = []
     frame_idx = 0
     kept = 0
+    last_ts = timestamp_offset_ms
 
     while True:
         ok, frame_bgr = cap.read()
@@ -144,7 +152,15 @@ def extract_video(
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
 
         # Timestamp must be monotonically increasing in VIDEO mode
-        timestamp_ms = int(round(frame_idx * (1000.0 / fps))) if fps > 1e-3 else frame_idx * 33
+        if fps > 1e-3:
+            local_ms = int(round(frame_idx * (1000.0 / fps)))
+        else:
+            local_ms = frame_idx * 33
+        timestamp_ms = timestamp_offset_ms + local_ms
+        if timestamp_ms <= last_ts:
+            timestamp_ms = last_ts + 1
+        last_ts = timestamp_ms
+
         pose_result = pose_landmarker.detect_for_video(mp_image, timestamp_ms)
         hand_result = hand_landmarker.detect_for_video(mp_image, timestamp_ms)
         feats.append(frame_feature(pose_result, hand_result))
@@ -162,7 +178,8 @@ def extract_video(
         "feature_dim": FEAT_DIM,
         "layout": "pose33_xyz + left_hand21_xyz + right_hand21_xyz",
     }
-    return arr, meta
+    # Leave a gap so the next video clearly continues the timeline
+    return arr, meta, last_ts + 1000
 
 
 def out_stem_for(video: Path, input_root: Path) -> str:
@@ -243,6 +260,7 @@ def main() -> int:
 
     ok_count = 0
     fail_count = 0
+    timestamp_offset_ms = 0
 
     with vision.PoseLandmarker.create_from_options(
         pose_options
@@ -262,8 +280,12 @@ def main() -> int:
             label = label_from_path(video, args.input)
             print(f"[{i}/{len(videos)}] {label} <- {video.name}")
             try:
-                feats, meta = extract_video(
-                    video, pose_landmarker, hand_landmarker, args.frame_stride
+                feats, meta, timestamp_offset_ms = extract_video(
+                    video,
+                    pose_landmarker,
+                    hand_landmarker,
+                    args.frame_stride,
+                    timestamp_offset_ms=timestamp_offset_ms,
                 )
                 meta["label"] = label
                 meta["output_npy"] = str(npy_path)
