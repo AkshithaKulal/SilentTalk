@@ -23,6 +23,10 @@ venv/
 **/stage2_data/
 **/*.csv.bak
 
+# ISL / MediaPipe Track 2 — keep code, ignore heavy outputs + models
+isl_recognition/landmarks/
+isl_recognition/models/*.task
+
 # Training outputs / checkpoints
 # Stage 1 full runs can be large — keep ignored; Stage 2 LoRA checkpoint is small enough to push
 **/stage1_output/
