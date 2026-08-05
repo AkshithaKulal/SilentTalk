@@ -72,7 +72,6 @@ DEFAULT_50_WORDS = [
 # INCLUDE label variants that should count as a target word
 ALIASES = {
     "you (plural)": "You",
-    "how are you": "How",  # partial overlap — still useful signal; listed separately in notes
     "good morning": "Good",
     "good afternoon": "Good",
     "good evening": "Good",
