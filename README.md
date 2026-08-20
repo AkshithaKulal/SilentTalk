@@ -7,7 +7,7 @@ Local + Colab pipeline for ISL → Kannada/Tulu transfer learning (IndicTrans2 L
 Large artifacts are **not** in git (see `.gitignore`):
 - `model_cache/` (re-download from Hugging Face)
 - `stage1_data/`, `stage2_data/`, `samanantar_en_kn.csv`
-- `stage1_output/`, `stage2_output/` checkpoints
+- `stage1_output/`, `stage2_output/`, `stage2_kn_tcy_output/` checkpoints
 
 Copy those separately (Drive/USB) to the 56GB machine if needed, or rebuild.
 
@@ -33,15 +33,47 @@ Download base model:
 python download_model.py
 ```
 
+## Pipeline overview
+
+| Stage | Direction | Data | Output |
+|-------|-----------|------|--------|
+| 1 | EN→Kannada (`eng_Latn`→`kan_Knda`) | Samanantar | `stage1_output/checkpoint-1500` |
+| 2 (real) | KN→Tulu (`kan_Knda`→`brx_Deva` alias) | `kn_tcy_raw.csv` (organizers; no public mirror) | `stage2_kn_tcy_output/` |
+| 2 (historical) | EN→Tulu-in-`kan_Knda` slot | synthetic ~19k | `stage2_output/checkpoint-3000` (BLEU ~0.84; incomplete) |
+
+**Tulu tag:** IndicTrans2 has no `tcy_Knda`. Tulu uses stand-in tag `brx_Deva` with processor override to ISO `kn` (see `tulu_lang_alias.py`). Not real Bodo.
+
+## Stage 2 (real KN→Tulu)
+
+```powershell
+# Drop DravidianLangTech KN–TCY as kn_tcy_raw.csv (columns: kannada,tulu)
+python prepare_stage2_data.py --mode real
+.\run_stage2_train.ps1
+python test_stage2_inference.py
+python test_stage2_quality.py
+```
+
+If real CSV is missing (degraded / non-competitive continuity only):
+
+```powershell
+python prepare_stage2_data.py --mode synthetic_degraded
+.\run_stage2_train_synthetic.ps1
+```
+
 ## Important scripts
 
 | Script | Purpose |
 |--------|---------|
-| `train_lora.py` | LoRA training (patched) |
+| `train_lora.py` | LoRA training (Tulu alias override when `brx_Deva` is used) |
+| `tulu_lang_alias.py` | `brx_Deva`↔Tulu mapping + `kn` processor override |
+| `prepare_stage2_data.py` | `--mode real` or `synthetic_degraded` |
 | `run_train.ps1` / `resume_train.ps1` | Stage 1 train / resume |
+| `run_stage2_train.ps1` | Real KN→Tulu from Stage 1 ckpt-1500 |
+| `run_stage2_train_synthetic.ps1` | Degraded EN→Tulu continuity |
 | `test_inference.py` | Domain EN→KN check |
+| `test_stage2_inference.py` / `test_stage2_quality.py` | KN→Tulu eval |
 | `synthetic_en_tulu_fixed.csv` | Synthetic EN–Tulu (~19k) |
-| `resume_stage2_local.py` / `run_stage2_local.py` | Stage 2 local resume helpers |
+| `stage2_output/RESULTS.md` | Metrics + alias documentation |
 
 ## Security
 

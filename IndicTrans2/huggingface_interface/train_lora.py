@@ -1,10 +1,16 @@
 import os
+import sys
 import argparse
 import pandas as pd
 from datasets import Dataset
 from sacrebleu.metrics import BLEU, CHRF
 from peft import LoraConfig, get_peft_model, PeftModel
 from IndicTransToolkit import IndicProcessor, IndicDataCollator
+from tulu_lang_alias import (
+    TULU_LANG_TAG,
+    apply_tulu_processor_override,
+    should_apply_tulu_override,
+)
 
 from transformers import (
     Seq2SeqTrainer,
@@ -12,10 +18,20 @@ from transformers import (
     AutoModelForSeq2SeqLM,
     AutoTokenizer,
     EarlyStoppingCallback,
+    set_seed,
 )
 
 bleu_metric = BLEU()
 chrf_metric = CHRF()
+
+
+def _safe_print(msg: str) -> None:
+    """Avoid Windows cp1252 crashes on Kannada/Tulu sample prints."""
+    try:
+        print(msg)
+    except UnicodeEncodeError:
+        enc = getattr(sys.stdout, "encoding", None) or "utf-8"
+        print(msg.encode(enc, errors="replace").decode(enc, errors="replace"))
 
 
 def get_arg_parse():
@@ -80,6 +96,8 @@ def get_arg_parse():
     parser.add_argument("--num_workers", type=int, default=8)
     parser.add_argument("--metric_for_best_model", type=str, default="eval_loss")
     parser.add_argument("--greater_is_better", action="store_true")
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--save_total_limit", type=int, default=3)
     parser.add_argument("--lora_target_modules", type=str, default="q_proj,k_proj")
     parser.add_argument("--lora_dropout", type=float, default=0.1)
     parser.add_argument("--lora_r", type=int, default=16)
@@ -97,6 +115,15 @@ def get_arg_parse():
         type=str,
         default=None,
         help="Path to a Trainer checkpoint dir (e.g. ./stage1_output/checkpoint-1000)",
+    )
+    parser.add_argument(
+        "--tulu_tag_alias",
+        type=str,
+        default=None,
+        help=(
+            "Optional Tulu stand-in FLORES tag (default auto: sat_Olck when present "
+            "in src/tgt lists). Forces IndicProcessor ISO mapping to kn for Kannada-script Tulu."
+        ),
     )
     return parser
 
@@ -188,14 +215,14 @@ def compute_metrics_factory(
             labels
         ), "Predictions and Labels have different lengths"
 
-        df = pd.DataFrame({"Predictions": preds, "References": labels}).sample(
-            n=n_samples
-        )
-
         if print_samples:
+            sample_size = min(n_samples, len(preds))
+            df = pd.DataFrame({"Predictions": preds, "References": labels}).sample(
+                n=sample_size
+            )
             for pred, label in zip(df["Predictions"].values, df["References"].values):
-                print(f" | > Prediction: {pred}")
-                print(f" | > Reference: {label}\n")
+                _safe_print(f" | > Prediction: {pred}")
+                _safe_print(f" | > Reference: {label}\n")
 
         return {
             metric_name: metric.corpus_score(preds, [labels]).score
@@ -220,6 +247,15 @@ def preprocess_fn(example, tokenizer, **kwargs):
 
 
 def main(args):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
+    set_seed(args.seed)
+    print(f" | > Seed set to {args.seed} ...")
+
     print(f" | > Loading {args.model} and tokenizer ...")
     model = AutoModelForSeq2SeqLM.from_pretrained(
         args.model,
@@ -229,8 +265,18 @@ def main(args):
     )
 
     tokenizer = AutoTokenizer.from_pretrained(args.model, trust_remote_code=True)
-    processor = IndicProcessor(inference=False) # pre-process before tokenization
-    
+    processor = IndicProcessor(inference=False)  # pre-process before tokenization
+
+    src_langs = [x.strip() for x in args.src_lang_list.split(",") if x.strip()]
+    tgt_langs = [x.strip() for x in args.tgt_lang_list.split(",") if x.strip()]
+    alias = args.tulu_tag_alias or TULU_LANG_TAG
+    if args.tulu_tag_alias or should_apply_tulu_override(src_langs, tgt_langs, alias):
+        apply_tulu_processor_override(processor, alias=alias)
+        print(
+            f" | > Tulu alias override: {alias} -> ISO 'kn' "
+            "(Kannada-script Tulu; not real Bodo)"
+        )
+
     data_collator = IndicDataCollator(
         tokenizer=tokenizer,
         model=model,
@@ -245,8 +291,8 @@ def main(args):
             split="train",
             tokenizer=tokenizer,
             processor=processor,
-            src_lang_list=args.src_lang_list.split(","),
-            tgt_lang_list=args.tgt_lang_list.split(","),
+            src_lang_list=src_langs,
+            tgt_lang_list=tgt_langs,
         )
         print(f" | > Loaded train dataset from {args.data_dir}. Size: {len(train_dataset)} ...")
 
@@ -255,8 +301,8 @@ def main(args):
             split="dev",
             tokenizer=tokenizer,
             processor=processor,
-            src_lang_list=args.src_lang_list.split(","),
-            tgt_lang_list=args.tgt_lang_list.split(","),
+            src_lang_list=src_langs,
+            tgt_lang_list=tgt_langs,
         )
         print(f" | > Loaded eval dataset from {args.data_dir}. Size: {len(eval_dataset)} ...")
     else:
@@ -274,19 +320,18 @@ def main(args):
 
     model.set_label_smoothing(args.label_smoothing)
 
-    # Full Trainer resume needs torch>=2.6 to load optimizer.pt.
-    # On torch 2.5 we reload LoRA adapter weights only, then continue training.
+    # Load optional starting adapter weights without using Trainer checkpoint
+    # resume flow (torch<2.6 blocks optimizer state loading for security).
     resume_trainer_ckpt = None
     if args.resume_from_checkpoint:
-        print(
-            f" | > Loading LoRA adapter from {args.resume_from_checkpoint} "
-            "(weights only; optimizer restarts — safe on torch 2.5)"
-        )
+        print(f" | > Loading adapter init from {args.resume_from_checkpoint} ...")
         model = PeftModel.from_pretrained(
             model,
             args.resume_from_checkpoint,
             is_trainable=True,
         )
+        # Keep trainer-level resume disabled to avoid optimizer/scheduler load.
+        resume_trainer_ckpt = None
     else:
         model = get_peft_model(model, lora_config)
 
@@ -308,7 +353,7 @@ def main(args):
         eval_strategy="steps",
         save_strategy="steps",
         logging_steps=100,
-        save_total_limit=1,
+        save_total_limit=args.save_total_limit,
         predict_with_generate=True,
         load_best_model_at_end=True,
         max_steps=args.max_steps, # max_steps overrides num_train_epochs
@@ -331,6 +376,8 @@ def main(args):
         dataloader_num_workers=args.num_workers,
         metric_for_best_model=args.metric_for_best_model,
         greater_is_better=args.greater_is_better,
+        seed=args.seed,
+        data_seed=args.seed,
         report_to=args.report_to,
         generation_max_length=256,
         generation_num_beams=5,
@@ -338,7 +385,7 @@ def main(args):
         group_by_length=True,
         include_tokens_per_second=True,
         include_num_input_tokens_seen=True,
-        dataloader_prefetch_factor=2,
+        dataloader_prefetch_factor=2 if args.num_workers > 1 else None,
     )
 
     # Create Trainer instance
@@ -356,6 +403,9 @@ def main(args):
             )
         ],
     )
+    # Newer Trainer versions may pass `num_items_in_batch` into model kwargs.
+    # IndicTrans forward() does not accept it, so disable that behavior.
+    trainer.model_accepts_loss_kwargs = False
 
     print(f" | > Starting training ...")
 

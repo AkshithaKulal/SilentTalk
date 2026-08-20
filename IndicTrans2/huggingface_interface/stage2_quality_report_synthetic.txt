@@ -1,0 +1,45 @@
+mode=synthetic_degraded
+mode_summary=Synthetic degraded fallback mode: English->Tulu continuity data (not a real KN-TCY run).
+resume_source=stage1_output/checkpoint-1500
+not_resumed_from=stage2_output/checkpoint-3000 (discarded non-standard tag run)
+adapter=stage2_synthetic_sat_output
+direction=eng_Latn->sat_Olck (Tulu via sat_Olck alias; not real Santali)
+n_eval=100
+
+=== Dev set sample (100) with Stage 2 LoRA ===
+BLEU: 0.09
+chrF: 7.51
+
+--- First 8 Pred vs Ref ---
+[1] SRC:  Take me to someone else's house.
+    PRED: ನಾರಿ ಗ್ರುದ ರೆ ಬುವಾ (ಡ್) ರಿ
+    REF:  ತಗ್ಗೆ ನೆರೆನು ಯೆರವೊಂದು ಬನ್ನಾಗ ಅವುಲೊಂಜಿ ಸುದ್ದಿ ಕೆಂಡೆರ್
+
+[2] SRC:  Leslie Epstein director of creative work at Boston University received a second fellowship the following year.
+    PRED: ನಾರು ಗ್ರಿದ ಬಾರಿ ರಾರೆ ಗಿ ನುವಿ ಡ್ ಲ್ ರಿರಾದ ಗಾರಾ ನಿ ಬಿ ಗೆ ರುದ ತಿ ದ್ರುರ ರೆರುಂದ್ ನೆ ನರಿಕ ಗುರಿ (ರ) ನ ರೇರ ಗ ರ್ರಾಮ (ುಪ) (ಗ ಮೂಲ))
+    REF:  ಬೋಸ್ಟನ್ ವಿಶ್ವವಿದ್ಯಾಲಯೊಡು ಸೃಜನಶೀಲ ಬರವುದ ಕಾರ್ಯಕ್ರಮೊದ ನಿರ್ದೇಶಕೆರ್ ಆಯಿನ ಲೆಸ್ಲಿ ಎಪ್ಸ್ಟೀನ್ ಒಂಜಿ ಅಪವಾದೊನು ಮಲ್ತೆರ್ ಉಂದೆನ್ ತೂದು ಮುಂದಿನ ವರ್ಷ ಫೆಲೋಶಿಪ್ ದ ಒಟ್ಟುಗು ಕಾರ್ಯಕ್ರಮೊಗು ಔಪಚಾರಿಕವಾದ್ ಅರ್ಜಿ ಸಲ್ಲಿಸೊಡಾಪುಂಡು
+
+[3] SRC:  Some of the work done by the Toolkit station ( which is also called ToolKit ) is not more than an inch in length as compared to the one done at the end of the day.
+    PRED: ನಾರು (ಗ್ರ) ಬಿದ ರಾರಿ ರಿರೆ (ಡ್ ಗಿ ವಾರ) 5
+    REF:  ತುಳುನಾಡ್ದ ಸ್ಥಳನಾಮೊಲೆಡು (ಅಂಚನೆ ಕನ್ನಡದ ಊರುಲೆಡ್) ಬರ್ಪುನ ಕೆಲವು ಸಾಮಾನ್ಯ ಅಂತ್ಯ ಪ್ರತ್ಯಯ ಪದೊಕ್ಕುಲು ಬುಕ್ಕೊ ಆ ಪುದರುಲೆನ ಊರುಲೆನ ಪಟ್ಟಿ ಇಂಚ ಉಲ್ಲೊ
+
+[4] SRC:  Andalusian proteinase is a protein that acts as a regulatory regulator.
+    PRED: ನಾರಿದ ಗ್ರೆ ಬುರಿ ರಾರಾವಾ ಲ್ ನ ರಿರಾ ಗಿ ಡ್ ಗು ರುಂದ್ ರೇರಿ
+    REF:  ಆಂಡಲಾ ನಪುಂಸಕ ಪೊಥಿನಸ್ ಅರೆನ ಪರವಾದ್ ಆಡಳಿತೊನು ನಿಯಂತ್ರಣ ಮಲ್ತೆರ್
+
+[5] SRC:  Jogukulang Thandelan Mardar Mpur
+    PRED: ನಾರಿದ ಗ್ರೆ ಬುರಿ ರಾವಿ ಡ್ ಗಿ ಲಾ ರಿ (1)-2)-3)-1-0-0 5-0 0-6-0 7-0 10-0 15-0 50-0 20-0 30-0 19-0 352-0201-0 365-0190-0186-0305-110005-21-0175-13205-18206-19-16208-17205
+    REF:  ಜೋಕುಲೆಗ್ ತೆಂಡೆಲ್‍ನ್ ಮರ್ದ್ ಮನ್ಪೆರ್
+
+[6] SRC:  It's five o 'clock in the morning
+    PRED: ಾಕಲ್ಯಾ ತ್ಸ್ പ്'ರಿ'ನಾ'ಗ್'ಬೆ'ಲು'ಡ್ ದ್ ರಾ ಟ'5-0-0'5-1-2-3-4-6-6'0-7-0 0-10'5'0'20'0 0'0 9'0 10'0 15'0 30'0 19'0% 0'50'0 90'00'020'09'06'08'05'0 17'00'0
+    REF:  ಕುಡೆಕಲ್ಲು ಐನ್ ಮನೆ
+
+[7] SRC:  Key to the overall success of the company was the development of Ireland's international technology sector.
+    PRED: ನಾರಿದ ಗ್ರೆ ಬುರಿ ಲ್ರಿವಾ ಡ್ ಗಿ ರಾರಾ ರಿರಾದ್ ರುರು ರೇರಿ
+    REF:  ಲಭ್ಯವಾಯಿನ ಎಲ್ಯ ಸಾಕ್ಷ್ಯೊಲು ಮುಖ್ಯವಾದ್ ಐರ್ಲೆಂಡ್ ಗ್ ಬರ್ಪಿನ ವಿದೇಶಿ ಸಂದರ್ಶಕೆರೆಡ ತಿಕ್ಕ್ಂಡ್
+
+[8] SRC:  Today is our TENSD SUTARPOLI.
+    PRED: ನಾರಿದ ಗ್ರೆ ಬುರಿ ರಾರಾ ರಿ (5) ರುವಿ (3)-5 (6)-13)-16 (6/5)-36 (5/7)-19 (3/4)-10)-17/7/6/6 (4/6) = 6/4/3/5/5 (4) = 5/1/6-6/2/6 = 3/10/6/5/6
+    REF:  ಇಂದೆನ್ ನಮ್ಮ ತೆನಸ್ಡ್ ಸುದಾರ್ಪೊಲಿ
+

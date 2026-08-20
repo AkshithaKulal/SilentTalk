@@ -35,7 +35,7 @@ cdef class IndicProcessor:
     cdef list _PUNC_REPLACEMENTS
     cdef list _INDIC_FAILURE_CASES
 
-    cdef dict _flores_codes
+    cdef public dict _flores_codes
     cdef dict _digits_translation_table
 
     # Placeholder maps stored in a Python Queue (treated as `object` for Cython)

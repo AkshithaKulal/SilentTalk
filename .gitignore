@@ -14,8 +14,12 @@ venv/
 # Ignore heavy weight files globally, then allow Stage 2 LoRA checkpoint artifacts
 **/*.safetensors
 !**/stage2_output/**/*.safetensors
+!**/stage2_kn_tcy_output/**/*.safetensors
+!**/stage2_synthetic_brx_output/**/*.safetensors
 **/*.bin
 !**/stage2_output/**/*.bin
+!**/stage2_kn_tcy_output/**/*.bin
+!**/stage2_synthetic_brx_output/**/*.bin
 
 # Large datasets
 **/samanantar_en_kn.csv
@@ -27,6 +31,13 @@ venv/
 isl_recognition/landmarks/
 isl_recognition/models/*.task
 isl_recognition/artifacts/
+
+# Self-recorded ISL videos (keep folder tree + labels.csv; ignore media)
+raw_video/**/*.mp4
+raw_video/**/*.mov
+raw_video/**/*.avi
+raw_video/**/*.mkv
+
 
 # Training outputs / checkpoints
 # Stage 1 full runs can be large — keep ignored; Stage 2 LoRA checkpoint is small enough to push
