@@ -29,8 +29,10 @@ venv/
 
 # ISL / MediaPipe Track 2 — keep code, ignore heavy outputs + models
 isl_recognition/landmarks/
+isl_recognition/landmarks_smoke/
 isl_recognition/models/*.task
-isl_recognition/artifacts/
+isl_recognition/artifacts/*
+!isl_recognition/artifacts/tulu_sentence_map_kn.json
 
 # Self-recorded ISL videos (keep folder tree + labels.csv; ignore media)
 raw_video/**/*.mp4

@@ -233,10 +233,20 @@ def main() -> int:
         print(f"ERROR: no videos under {args.input}", file=sys.stderr)
         return 1
 
+    args.output.mkdir(parents=True, exist_ok=True)
+
+    if args.skip_existing:
+        pending_videos = []
+        for video in videos:
+            stem = out_stem_for(video, args.input)
+            npy_path = args.output / f"{stem}.npy"
+            if not npy_path.exists():
+                pending_videos.append(video)
+        videos = pending_videos
+
     if args.limit > 0:
         videos = videos[: args.limit]
 
-    args.output.mkdir(parents=True, exist_ok=True)
     print(f"Videos to process: {len(videos)}")
     print(f"Output dir: {args.output}")
 

@@ -78,3 +78,28 @@ python prepare_stage2_data.py --mode synthetic_degraded
 ## Security
 
 Never commit HF tokens. Use `$env:HF_TOKEN` / `export HF_TOKEN=...`.
+
+## ISL Demo: Predict To Spoken Tulu
+
+Prerequisite (from repo root):
+
+```powershell
+. .\.venv\Scripts\Activate.ps1
+python -m pip install -r isl_recognition\requirements.txt
+```
+
+Run sign prediction with mapped Kannada-script Tulu sentence:
+
+```powershell
+python isl_recognition\predict_tulu_speech.py --video isl_recognition\artifacts\thankyou_demo.mp4 --artifacts isl_recognition\artifacts --mapping isl_recognition\artifacts\tulu_sentence_map_kn.json --top-k 5
+```
+
+Enable speech output:
+
+```powershell
+python isl_recognition\predict_tulu_speech.py --video isl_recognition\artifacts\thankyou_demo.mp4 --artifacts isl_recognition\artifacts --mapping isl_recognition\artifacts\tulu_sentence_map_kn.json --top-k 5 --speak
+```
+
+Notes:
+- If top-1 label is missing in mapping, the script falls back through top-k labels.
+- If no mapped sentence is found, the script prints a warning and exits without crashing.
