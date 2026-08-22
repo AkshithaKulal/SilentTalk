@@ -81,6 +81,10 @@ Never commit HF tokens. Use `$env:HF_TOKEN` / `export HF_TOKEN=...`.
 
 ## ISL Demo: Predict To Spoken Tulu
 
+For a full junior-friendly INCLUDE workflow (setup -> audit -> extraction -> training -> prediction -> speech), see:
+
+`isl_recognition/INCLUDE_PIPELINE_RUNBOOK.md`
+
 Prerequisite (from repo root):
 
 ```powershell

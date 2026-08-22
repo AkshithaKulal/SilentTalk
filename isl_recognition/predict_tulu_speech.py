@@ -94,7 +94,7 @@ def speak_sentence(sentence: str) -> tuple[bool, str]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Predict sign and speak mapped Tulu sentence")
-    parser.add_argument("--video", type=Path, required=True)
+    parser.add_argument("--video", type=Path, required=False)
     parser.add_argument(
         "--artifacts",
         type=Path,
@@ -107,21 +107,73 @@ def main() -> int:
     )
     parser.add_argument("--top-k", type=int, default=5)
     parser.add_argument("--speak", action="store_true", help="Enable text-to-speech output")
+    parser.add_argument(
+        "--demo-text",
+        type=str,
+        default="",
+        help="Speak this sentence directly (skip video prediction)",
+    )
+    parser.add_argument(
+        "--allow-missing-model",
+        action="store_true",
+        help="If classifier artifacts are missing, fall back to first sentence in mapping",
+    )
     args = parser.parse_args()
-
-    if not args.video.exists():
-        print(f"ERROR: video not found: {args.video}", file=sys.stderr)
-        return 1
 
     try:
         mapping = load_mapping(args.mapping)
-        top_preds, meta = predict_video_topk(
-            video=args.video,
-            artifacts=args.artifacts,
-            models_dir=Path(__file__).resolve().parent / "models",
-            top_k=max(1, args.top_k),
-            frame_stride=2,
-        )
+        if args.demo_text.strip():
+            sentence = args.demo_text.strip()
+            print("Mode: demo-text (video prediction skipped)")
+            print(f"Spoken sentence: {sentence}")
+
+            if args.speak:
+                ok, msg = speak_sentence(sentence)
+                if ok:
+                    print(f"TTS: success ({msg})")
+                else:
+                    print(f"WARNING: TTS skipped/failed ({msg})")
+            else:
+                print("TTS: disabled (use --speak to enable)")
+            return 0
+
+        if not args.video:
+            print("ERROR: --video is required unless --demo-text is used.", file=sys.stderr)
+            return 1
+        if not args.video.exists():
+            print(f"ERROR: video not found: {args.video}", file=sys.stderr)
+            return 1
+
+        try:
+            top_preds, meta = predict_video_topk(
+                video=args.video,
+                artifacts=args.artifacts,
+                models_dir=Path(__file__).resolve().parent / "models",
+                top_k=max(1, args.top_k),
+                frame_stride=2,
+            )
+        except FileNotFoundError as exc:
+            if not args.allow_missing_model:
+                raise
+
+            if not mapping:
+                raise RuntimeError("mapping file is empty; cannot use fallback sentence") from exc
+
+            first_label = next(iter(mapping))
+            first_sentence = mapping[first_label]
+            print(f"WARNING: {exc}")
+            print("Mode: fallback-first-mapping (prediction skipped)")
+            print(f"Selected label: {first_label}")
+            print(f"Spoken sentence: {first_sentence}")
+            if args.speak:
+                ok, msg = speak_sentence(first_sentence)
+                if ok:
+                    print(f"TTS: success ({msg})")
+                else:
+                    print(f"WARNING: TTS skipped/failed ({msg})")
+            else:
+                print("TTS: disabled (use --speak to enable)")
+            return 0
     except Exception as exc:  # noqa: BLE001
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
