@@ -47,7 +47,8 @@ $packages = @(
     "numpy",
     "flask",
     "sounddevice",
-    "pyttsx3"
+    "pyttsx3",
+    "gdown"
 )
 
 foreach ($pkg in $packages) {
@@ -86,7 +87,7 @@ if (Test-Path $mmsCachePath) {
 }
 
 # ── 5. Download MediaPipe models ─────────────────────────────────────────────
-Write-Host "[5/6] Checking MediaPipe models..." -ForegroundColor Yellow
+Write-Host "[5/7] Checking MediaPipe models..." -ForegroundColor Yellow
 python -c "
 import sys
 sys.path.insert(0, 'isl_recognition')
@@ -101,8 +102,29 @@ download_if_missing(POSE_MODEL_URL, m / 'pose_landmarker_lite.task')
 print('  MediaPipe models ready.')
 "
 
-# ── 6. Summary ───────────────────────────────────────────────────────────────
-Write-Host "[6/6] Setup complete." -ForegroundColor Yellow
+# ── 6. Download verification_set from Google Drive ───────────────────────────
+Write-Host "[6/7] Downloading verification_set (sample sign videos)..." -ForegroundColor Yellow
+$verificationPath = "isl_recognition\verification_set"
+if (Test-Path $verificationPath) {
+    $videoCount = (Get-ChildItem $verificationPath -Recurse -Include "*.MOV","*.mp4" -ErrorAction SilentlyContinue).Count
+    Write-Host "      verification_set/ already exists ($videoCount videos), skipping." -ForegroundColor DarkGray
+} else {
+    Write-Host "      Downloading from Google Drive (this may take a few minutes)..."
+    python -c "
+import gdown
+gdown.download_folder(
+    'https://drive.google.com/drive/folders/1Hia3uO4VBa-NI38CpBKjvE_GsWO6TXxP',
+    output='isl_recognition/verification_set',
+    quiet=False,
+    use_cookies=False
+)
+print('  verification_set downloaded.')
+"
+    Write-Host "      Done." -ForegroundColor Green
+}
+
+# ── 7. Summary ───────────────────────────────────────────────────────────────
+Write-Host "[7/7] Setup complete." -ForegroundColor Yellow
 
 if ($missing.Count -gt 0) {
     Write-Host "`n⚠  Missing artifacts (copy from training machine):" -ForegroundColor Red
