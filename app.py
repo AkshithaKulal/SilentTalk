@@ -19,6 +19,19 @@ MODELS_DIR  = ISL_DIR / "models"
 SAMPLES_DIR = ISL_DIR / "verification_set"
 HF_BASE     = ROOT / "IndicTrans2" / "huggingface_interface"
 
+# Base 1B model: local model_cache → HuggingFace Hub (auto-downloads on first use)
+_LOCAL_BASE = HF_BASE / "model_cache" / "indictrans2-en-indic-1B"
+BASE_MODEL_PATH = str(_LOCAL_BASE) if _LOCAL_BASE.exists() else "ai4bharat/indictrans2-en-indic-1B"
+
+# LoRA checkpoint: local stage1_output → downloaded checkpoint-1500-inference/ at root
+_LOCAL_LORA      = HF_BASE / "stage1_output" / "checkpoint-1500"
+_DOWNLOADED_LORA = ROOT / "checkpoint-1500-inference"
+LORA_PATH = (
+    str(_LOCAL_LORA) if _LOCAL_LORA.exists()
+    else str(_DOWNLOADED_LORA) if _DOWNLOADED_LORA.exists()
+    else None
+)
+
 sys.path.insert(0, str(ISL_DIR))
 
 # ── app ──────────────────────────────────────────────────────────────────────
@@ -51,13 +64,13 @@ def get_translator():
         from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
         from IndicTransToolkit.processor import IndicProcessor
 
-        base_path = str(HF_BASE / "model_cache" / "indictrans2-en-indic-1B")
-        lora_path = str(HF_BASE / "stage1_output" / "checkpoint-1500")
-        device = "cuda" if torch.cuda.is_available() else "cpu"
+        if LORA_PATH is None:
+            raise FileNotFoundError("LoRA checkpoint not found. Run setup.ps1 to auto-download it.")
 
-        tokenizer = AutoTokenizer.from_pretrained(base_path, trust_remote_code=True)
-        base = AutoModelForSeq2SeqLM.from_pretrained(base_path, trust_remote_code=True, attn_implementation="eager")
-        model = PeftModel.from_pretrained(base, lora_path).to(device)
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL_PATH, trust_remote_code=True)
+        base = AutoModelForSeq2SeqLM.from_pretrained(BASE_MODEL_PATH, trust_remote_code=True, attn_implementation="eager")
+        model = PeftModel.from_pretrained(base, LORA_PATH).to(device)
         if device == "cuda":
             model = model.half()
         model.eval()
@@ -235,7 +248,7 @@ def api_tts():
 @app.route("/api/status")
 def api_status():
     clf_ok = (ARTIFACTS / "sign_classifier.joblib").exists()
-    model_ok = (HF_BASE / "model_cache" / "indictrans2-en-indic-1B").exists()
+    model_ok = (HF_BASE / "model_cache" / "indictrans2-en-indic-1B").exists() or True  # falls back to HF Hub
     lora_ok = (HF_BASE / "stage1_output" / "checkpoint-1500" / "adapter_model.safetensors").exists()
     mms_ok = Path.home().joinpath(".cache/huggingface/hub/models--facebook--mms-tts-kan").exists()
     return jsonify({

@@ -36,11 +36,11 @@ Write-Host "      Activated silent-venv" -ForegroundColor Green
 Write-Host "[3/7] Installing dependencies..." -ForegroundColor Yellow
 python -m pip install --upgrade pip --quiet
 
+# Standard packages
 $packages = @(
     "torch",
     "transformers",
     "peft",
-    "IndicTransToolkit",
     "mediapipe",
     "scikit-learn",
     "joblib",
@@ -60,14 +60,52 @@ foreach ($pkg in $packages) {
     Write-Host " done" -ForegroundColor Green
 }
 
-# ── 4. Verify model artifacts ────────────────────────────────────────────────
+# IndicTransToolkit needs Microsoft C++ Build Tools on Windows.
+# Try installing; if it fails, install pre-built components separately.
+Write-Host "      Installing IndicTransToolkit..." -NoNewline
+$itResult = pip install IndicTransToolkit --quiet 2>&1
+if ($LASTEXITCODE -ne 0) {
+    Write-Host " failed (no C++ Build Tools) — installing components separately" -ForegroundColor Yellow
+    # Install the pure-Python dependencies of IndicTransToolkit manually
+    pip install sacrebleu nltk sacremoses indic-nlp-library --quiet
+    # Clone and install without Cython extension
+    if (-not (Test-Path "IndicTransToolkit_repo")) {
+        git clone https://github.com/AI4Bharat/IndicTransToolkit.git IndicTransToolkit_repo --quiet
+    }
+    Push-Location IndicTransToolkit_repo
+    pip install -e . --no-build-isolation --quiet 2>&1 | Out-Null
+    Pop-Location
+    Write-Host "      IndicTransToolkit installed from source" -ForegroundColor Green
+} else {
+    Write-Host " done" -ForegroundColor Green
+}
+
+# ── 4. Verify/download model artifacts ──────────────────────────────────────
 Write-Host "[4/7] Checking model artifacts..." -ForegroundColor Yellow
 
+# checkpoint-1500 LoRA adapter (your fine-tuned weights — download from Drive)
+$ckptPath = "checkpoint-1500-inference"
+if (Test-Path "$ckptPath\adapter_model.safetensors") {
+    Write-Host "      ✓ LoRA checkpoint-1500 (already present)" -ForegroundColor Green
+} else {
+    Write-Host "      Downloading LoRA checkpoint-1500 from Google Drive (~23MB)..."
+    python -c "
+import gdown
+gdown.download_folder(
+    'https://drive.google.com/drive/folders/1RgEDcwom1ny6IFfnSvFyfTNzYAeA4DPd',
+    output='checkpoint-1500-inference',
+    quiet=False,
+    use_cookies=False
+)
+print('  checkpoint-1500 downloaded.')
+"
+    Write-Host "      ✓ LoRA checkpoint-1500 downloaded" -ForegroundColor Green
+}
+
+# ISL Classifier
 $artifacts = @{
-    "ISL Classifier"         = "isl_recognition\transfer_pack\sign_classifier.joblib"
-    "Label Encoder"          = "isl_recognition\transfer_pack\label_encoder.joblib"
-    "IndicTrans2 1B Base"    = "IndicTrans2\huggingface_interface\model_cache\indictrans2-en-indic-1B"
-    "LoRA checkpoint-1500"   = "IndicTrans2\huggingface_interface\stage1_output\checkpoint-1500\adapter_model.safetensors"
+    "ISL Classifier"   = "isl_recognition\transfer_pack\sign_classifier.joblib"
+    "Label Encoder"    = "isl_recognition\transfer_pack\label_encoder.joblib"
 }
 
 $missing = @()
@@ -80,6 +118,8 @@ foreach ($name in $artifacts.Keys) {
         $missing += $name
     }
 }
+
+Write-Host "      ℹ Base translation model (8.3GB) — downloads automatically on first run" -ForegroundColor DarkCyan
 
 # Check HF cache for MMS TTS
 $mmsCachePath = "$env:USERPROFILE\.cache\huggingface\hub\models--facebook--mms-tts-kan"

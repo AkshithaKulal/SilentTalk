@@ -24,10 +24,22 @@ try:
 except ImportError:
     IndicProcessor = None
 
-# Paths relative to this file's location (isl_recognition/), going up one level to IndicTrans2/
-_HF_INTERFACE = Path(__file__).resolve().parent.parent / "IndicTrans2" / "huggingface_interface"
-_BASE_MODEL_PATH = str(_HF_INTERFACE / "model_cache" / "indictrans2-en-indic-1B")
-_LORA_CHECKPOINT = str(_HF_INTERFACE / "stage1_output" / "checkpoint-1500")
+# Paths — support multiple locations for flexibility across machines
+_ROOT          = Path(__file__).resolve().parent.parent
+_HF_INTERFACE  = _ROOT / "IndicTrans2" / "huggingface_interface"
+
+# Base 1B model: local model_cache → HuggingFace Hub (auto-downloads ~8.3GB on first run)
+_LOCAL_BASE      = _HF_INTERFACE / "model_cache" / "indictrans2-en-indic-1B"
+_BASE_MODEL_PATH = str(_LOCAL_BASE) if _LOCAL_BASE.exists() else "ai4bharat/indictrans2-en-indic-1B"
+
+# LoRA adapter: local stage1_output → downloaded checkpoint folder at repo root
+_LOCAL_LORA   = _HF_INTERFACE / "stage1_output" / "checkpoint-1500"
+_DOWNLOADED_LORA = _ROOT / "checkpoint-1500-inference"
+_LORA_CHECKPOINT = (
+    str(_LOCAL_LORA) if _LOCAL_LORA.exists()
+    else str(_DOWNLOADED_LORA) if _DOWNLOADED_LORA.exists()
+    else None
+)
 
 
 class IndicTranslator:
@@ -37,13 +49,18 @@ class IndicTranslator:
         if IndicProcessor is None:
             raise ImportError("IndicTransToolkit not available. Install: pip install IndicTransToolkit")
 
+        if _LORA_CHECKPOINT is None:
+            raise FileNotFoundError(
+                "LoRA checkpoint-1500 not found. Run setup.ps1 to download it, "
+                "or copy it to: checkpoint-1500-inference/ at the repo root."
+            )
+
         self.target_lang = target_lang
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
 
         print(f"Loading base model: {_BASE_MODEL_PATH}", file=sys.stderr)
         print(f"Applying LoRA adapter: {_LORA_CHECKPOINT}", file=sys.stderr)
 
-        # Load tokenizer from base model (same as test_inference.py)
         self.tokenizer = AutoTokenizer.from_pretrained(_BASE_MODEL_PATH, trust_remote_code=True)
 
         # Load base 1B model then apply fine-tuned LoRA adapter — exact pattern from test_inference.py
