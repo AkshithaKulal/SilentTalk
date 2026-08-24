@@ -174,6 +174,27 @@ $t = Get-Content .\isl_recognition\artifacts\train_report.json | ConvertFrom-Jso
 "acc=$($t.accuracy) top3=$($t.top3) top5=$($t.top5)"
 ```
 
+---
+
+## Accuracy Numbers — What Is and Is Not a Valid Claim
+
+### Citable accuracy (train_report.json)
+- **Top-1: 73.9% | Top-3: 88.2% | Top-5: 94.3%**
+- Source: stratified 80/20 split during training on 1568 INCLUDE samples (84 classes)
+- The 20% held-out split (~314 samples) was never used for training; these numbers are the only valid accuracy claim for the current classifier
+- Split indices were not saved separately; this result cannot be independently reproduced without re-running training on the original data
+
+### Pipeline sanity check (NOT an accuracy claim)
+- On 2026-08-24, 89 videos from `isl_recognition/verification_set/` were run through `predict_sign.py`
+- Result: 77/89 correct (86.5% top-1), 85/89 in top-3 (95.5%)
+- **This number is NOT valid as an accuracy claim** — all 89 videos were confirmed to be part of the original 1568 training samples (filename cross-reference against landmark files in `isl_recognition/landmarks/`)
+- It was a pipeline end-to-end sanity check only: confirms the model loads, MediaPipe runs, and predictions are produced correctly
+
+### What is needed for a real independent test
+- Self-recorded videos of signs, from signers and sessions NOT in the INCLUDE training set
+- Label each video by true sign, run through `batch_processor.py`, report results
+- Target: 5+ clips per class across at least 18-20 sign classes
+
 ## 12) Release packaging (training stage)
 
 Package only required inference files:

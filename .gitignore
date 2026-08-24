@@ -4,8 +4,18 @@ __pycache__/
 *.egg-info/
 .venv/
 venv/
+silent-venv/
 .env
 *.log
+
+# Flask / app artifacts
+test_results/
+*.bundle
+
+# Temp/utility scripts
+compare_models.py
+run_verification.py
+translate_vocab50.py
 
 # Hugging Face / models (re-download on the other machine)
 **/model_cache/

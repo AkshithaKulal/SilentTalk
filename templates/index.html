@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>SilentTalk — ISL Recognition</title>
+  <link rel="stylesheet" href="/static/css/style.css"/>
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <div class="logo">
+      <span class="logo-icon">🤟</span>
+      <span class="logo-text">SilentTalk</span>
+    </div>
+    <div class="tagline">Indian Sign Language → Kannada Speech</div>
+    <div id="status-bar">
+      <span class="status-dot" id="dot-clf"></span>Classifier
+      <span class="status-dot" id="dot-trans"></span>Translation
+      <span class="status-dot" id="dot-tts"></span>TTS
+    </div>
+  </div>
+</header>
+
+<main>
+  <!-- LEFT: Sign selector + sample video -->
+  <section class="panel panel-left">
+    <h2>📖 Choose a Sign to Practice</h2>
+    <div class="sign-grid" id="sign-grid">
+      {% for sign in signs %}
+      <button class="sign-btn" data-label="{{ sign.label }}"
+              data-folder="{{ sign.folder }}" data-sample="{{ sign.sample }}">
+        {{ sign.label }}
+      </button>
+      {% endfor %}
+    </div>
+
+    <div class="sample-section" id="sample-section" style="display:none">
+      <h3>📽 Reference Sign: <span id="sample-label"></span></h3>
+      <video id="sample-video" autoplay loop muted playsinline
+             style="width:100%;border-radius:12px;max-height:320px;object-fit:cover;">
+        Your browser does not support video.
+      </video>
+      <p class="hint">Watch the reference, then perform the same sign in front of your webcam →</p>
+    </div>
+  </section>
+
+  <!-- CENTER: Webcam + controls -->
+  <section class="panel panel-center">
+    <h2>🎥 Your Webcam</h2>
+    <div class="webcam-wrapper">
+      <video id="webcam" autoplay muted playsinline></video>
+      <canvas id="overlay-canvas"></canvas>
+      <div id="recording-badge" style="display:none">● REC</div>
+    </div>
+
+    <div class="controls">
+      <button id="btn-start-webcam" class="btn btn-primary" onclick="startWebcam()">Start Camera</button>
+      <button id="btn-capture" class="btn btn-green" onclick="startCapture()" disabled>
+        ▶ Capture Sign (3s)
+      </button>
+      <button id="btn-speak" class="btn btn-blue" onclick="speakTranslation()" disabled>
+        🔊 Speak
+      </button>
+    </div>
+
+    <div id="capture-progress" style="display:none">
+      <div class="progress-bar"><div id="progress-fill"></div></div>
+      <p id="capture-status">Capturing...</p>
+    </div>
+  </section>
+
+  <!-- RIGHT: Prediction results -->
+  <section class="panel panel-right">
+    <h2>🔍 Prediction</h2>
+
+    <div class="result-box" id="result-box">
+      <div class="result-empty">Perform a sign to see prediction</div>
+    </div>
+
+    <div id="translation-box" style="display:none">
+      <h3>🌐 Kannada Translation</h3>
+      <div class="translation-text" id="translation-text"></div>
+    </div>
+
+    <div class="top5-box" id="top5-box" style="display:none">
+      <h3>Top 5 Predictions</h3>
+      <div id="top5-list"></div>
+    </div>
+
+    <div class="history-box">
+      <h3>📜 Session History</h3>
+      <div id="history-list"><p class="dim">No predictions yet.</p></div>
+    </div>
+  </section>
+</main>
+
+<script src="/static/js/app.js"></script>
+</body>
+</html>

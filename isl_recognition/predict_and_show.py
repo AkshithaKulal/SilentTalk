@@ -87,29 +87,48 @@ def draw_overlay(frame_bgr, pose_result, hand_result, title: str, lines: list[st
             for hand_lms in hand_result.hand_landmarks:
                 _dots(hand_lms, (0, 128, 255))
 
-    # Banner
-    cv2.rectangle(annotated, (0, 0), (w, 90 + 22 * len(lines)), (0, 0, 0), -1)
-    cv2.putText(
-        annotated,
-        title,
-        (12, 28),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.8,
-        (255, 255, 255),
-        2,
-        cv2.LINE_AA,
-    )
+    # Banner background
+    banner_h = 100 + 24 * len(lines)
+    cv2.rectangle(annotated, (0, 0), (w, banner_h), (20, 20, 20), -1)
+
+    # Title (prediction label)
+    cv2.putText(annotated, title, (12, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.85, (255, 255, 255), 2, cv2.LINE_AA)
+
+    # Top-k lines with confidence bar
     for i, line in enumerate(lines):
-        cv2.putText(
-            annotated,
-            line,
-            (12, 60 + 22 * i),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.65,
-            (80, 255, 80),
-            2,
-            cv2.LINE_AA,
-        )
+        y = 62 + 24 * i
+        # Parse confidence from line like "Sunday  98.7%"
+        conf = 0.0
+        try:
+            conf = float(line.rsplit(None, 1)[-1].rstrip("%")) / 100
+        except Exception:
+            pass
+        # Color: green >=0.7, orange 0.4-0.7, red <0.4
+        if conf >= 0.7:
+            color = (60, 220, 60)
+        elif conf >= 0.4:
+            color = (40, 160, 220)
+        else:
+            color = (60, 60, 200)
+        # Confidence bar
+        bar_x, bar_y, bar_h = w - 160, y - 14, 12
+        cv2.rectangle(annotated, (bar_x, bar_y), (bar_x + 150, bar_y + bar_h), (60, 60, 60), -1)
+        cv2.rectangle(annotated, (bar_x, bar_y), (bar_x + int(150 * conf), bar_y + bar_h), color, -1)
+        cv2.putText(annotated, line, (12, y), cv2.FONT_HERSHEY_SIMPLEX, 0.62, color, 1, cv2.LINE_AA)
+
+    return annotated
+
+
+def draw_processing_frame(frame_bgr: np.ndarray, frame_idx: int, total: int) -> np.ndarray:
+    """Overlay 'ANALYZING...' banner on frame during landmark extraction pass."""
+    annotated = frame_bgr.copy()
+    h, w = annotated.shape[:2]
+    cv2.rectangle(annotated, (0, 0), (w, 60), (20, 20, 20), -1)
+    pct = int(frame_idx / max(total, 1) * 100)
+    bar_w = int(w * frame_idx / max(total, 1))
+    cv2.rectangle(annotated, (0, 48), (bar_w, 60), (0, 180, 255), -1)
+    cv2.putText(annotated, f"Analyzing... frame {frame_idx}/{total}  ({pct}%)",
+                (12, 34), cv2.FONT_HERSHEY_SIMPLEX, 0.72, (0, 200, 255), 2, cv2.LINE_AA)
     return annotated
 
 
@@ -189,7 +208,13 @@ def main() -> int:
     frame_idx = 0
     last_ts = -1
 
-    print("Pass 1: extract landmarks ...")
+    # Get total frame count for progress bar
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+
+    win = "SilentTalk — sign prediction"
+    cv2.namedWindow(win, cv2.WINDOW_NORMAL)
+
+    print("Pass 1: extract landmarks (live preview) ...")
     with vision.PoseLandmarker.create_from_options(
         pose_options
     ) as pose_landmarker, vision.HandLandmarker.create_from_options(
@@ -216,8 +241,17 @@ def main() -> int:
             if use:
                 feats.append(frame_feature(pose_result, hand_result))
 
-            # Temporary overlay without prediction text yet
+            # Show live processing preview with progress bar
+            preview = draw_overlay(frame_bgr, pose_result, hand_result, "Analyzing...", [])
+            preview = draw_processing_frame(preview, frame_idx, total_frames)
+            cv2.imshow(win, preview)
+            if cv2.waitKey(1) & 0xFF in (ord("q"), 27):
+                cv2.destroyAllWindows()
+                cap.release()
+                return 0
+
             frames_out.append((frame_bgr, pose_result, hand_result))
+            frame_idx += 1
             frame_idx += 1
 
     cap.release()
@@ -241,11 +275,9 @@ def main() -> int:
     print("--- top predictions ---")
     for i, line in enumerate(lines, start=1):
         print(f"{i}. {line}")
-    print("Playing video window (q / Esc quit, SPACE pause) ...")
+    print("Replaying with prediction overlay (q / Esc quit, SPACE pause) ...")
 
     paused = False
-    win = "SilentTalk — sign prediction"
-    cv2.namedWindow(win, cv2.WINDOW_NORMAL)
 
     for frame_bgr, pose_result, hand_result in frames_out:
         annotated = draw_overlay(frame_bgr, pose_result, hand_result, title, lines)
