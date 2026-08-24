@@ -30,7 +30,7 @@ Write-Host "      Activated silent-venv" -ForegroundColor Green
 Write-Host "[3/7] Installing dependencies..." -ForegroundColor Yellow
 python -m pip install --upgrade pip --quiet
 
-$packages = @("torch","transformers","peft","mediapipe","scikit-learn","joblib","opencv-python","pillow","scipy","numpy","flask","sounddevice","pyttsx3","gdown")
+$packages = @("numpy<2.0","torch","transformers","peft","mediapipe","scikit-learn","joblib","opencv-python","pillow","scipy","flask","sounddevice","pyttsx3","gdown")
 foreach ($pkg in $packages) {
     Write-Host "      Installing $pkg..." -NoNewline
     pip install $pkg --quiet

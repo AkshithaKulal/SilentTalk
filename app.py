@@ -38,13 +38,14 @@ sys.path.insert(0, str(ISL_DIR))
 app = Flask(__name__, template_folder="templates", static_folder="static")
 
 # ── lazy-loaded models ────────────────────────────────────────────────────────
-_classifier   = None
-_label_enc    = None
-_translator   = None
-_tts_model    = None
+_classifier    = None
+_label_enc     = None
+_translator    = None
+_tts_model     = None
 _tts_tokenizer = None
-_mediapipe_ready = False
-_load_lock    = threading.Lock()
+_pose_landmarker = None   # cached — initialized once, reused across all requests
+_hand_landmarker = None
+_load_lock     = threading.Lock()
 
 
 def get_classifier():
@@ -115,35 +116,42 @@ def synthesize_wav(text: str) -> bytes:
 
 
 def predict_frame_sequence(frames_bgr: list) -> list[tuple[str, float]]:
-    """Run MediaPipe + classifier on a list of BGR frames, return top-5."""
+    """Run MediaPipe + classifier on a list of BGR frames, return top-5.
+    MediaPipe landmarkers are cached globally — no reinitialization per request.
+    """
     import mediapipe as mp
     from mediapipe.tasks import python as mp_python
     from mediapipe.tasks.python import vision
-    from extract_landmarks import frame_feature, FEAT_DIM, download_if_missing, HAND_MODEL_URL, POSE_MODEL_URL
+    from extract_landmarks import frame_feature, download_if_missing, HAND_MODEL_URL, POSE_MODEL_URL
     from train_classifier import sequence_to_features
 
-    hand_model = download_if_missing(HAND_MODEL_URL, MODELS_DIR / "hand_landmarker.task")
-    pose_model = download_if_missing(POSE_MODEL_URL, MODELS_DIR / "pose_landmarker_lite.task")
+    global _pose_landmarker, _hand_landmarker
 
-    BaseOptions = mp_python.BaseOptions
-    pose_opts = vision.PoseLandmarkerOptions(
-        base_options=BaseOptions(model_asset_path=str(pose_model)),
-        running_mode=vision.RunningMode.VIDEO, num_poses=1)
-    hand_opts = vision.HandLandmarkerOptions(
-        base_options=BaseOptions(model_asset_path=str(hand_model)),
-        running_mode=vision.RunningMode.VIDEO, num_hands=2)
+    # Initialize MediaPipe once, keep in memory for all future requests
+    if _pose_landmarker is None or _hand_landmarker is None:
+        hand_model = download_if_missing(HAND_MODEL_URL, MODELS_DIR / "hand_landmarker.task")
+        pose_model = download_if_missing(POSE_MODEL_URL, MODELS_DIR / "pose_landmarker_lite.task")
+        BaseOptions = mp_python.BaseOptions
+
+        # Use IMAGE mode (stateless per-frame) so we can reuse across requests
+        pose_opts = vision.PoseLandmarkerOptions(
+            base_options=BaseOptions(model_asset_path=str(pose_model)),
+            running_mode=vision.RunningMode.IMAGE, num_poses=1)
+        hand_opts = vision.HandLandmarkerOptions(
+            base_options=BaseOptions(model_asset_path=str(hand_model)),
+            running_mode=vision.RunningMode.IMAGE, num_hands=2)
+
+        _pose_landmarker = vision.PoseLandmarker.create_from_options(pose_opts)
+        _hand_landmarker = vision.HandLandmarker.create_from_options(hand_opts)
 
     feats = []
-    with vision.PoseLandmarker.create_from_options(pose_opts) as pl, \
-         vision.HandLandmarker.create_from_options(hand_opts) as hl:
-        for i, frame in enumerate(frames_bgr):
-            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            rgb = np.ascontiguousarray(rgb)
-            mp_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
-            ts = i * 33
-            pr = pl.detect_for_video(mp_img, ts)
-            hr = hl.detect_for_video(mp_img, ts)
-            feats.append(frame_feature(pr, hr))
+    for frame in frames_bgr:
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        rgb = np.ascontiguousarray(rgb)
+        mp_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+        pr = _pose_landmarker.detect(mp_img)
+        hr = _hand_landmarker.detect(mp_img)
+        feats.append(frame_feature(pr, hr))
 
     if not feats:
         return []
