@@ -11,8 +11,8 @@ silent-venv/
 # Node / frontend build
 node_modules/
 static/react/
-package-lock.json
-package.json
+/package-lock.json
+/package.json
 
 # Flask / app artifacts
 test_results/
