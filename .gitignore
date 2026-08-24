@@ -8,6 +8,12 @@ silent-venv/
 .env
 *.log
 
+# Node / frontend build
+node_modules/
+static/react/
+package-lock.json
+package.json
+
 # Flask / app artifacts
 test_results/
 *.bundle
@@ -68,3 +74,4 @@ IndicTrans2/huggingface_interface/IndicTransToolkit_repo/.git/
 
 # Temporary reports ok to keep small txt; ignore huge dumps
 **/tcywiki-latest-pages-articles.xml.bz2
+node_modules

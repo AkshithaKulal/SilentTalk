@@ -144,9 +144,8 @@ def predict_frame_sequence(frames_bgr: list) -> list[tuple[str, float]]:
 
 
 # ── routes ────────────────────────────────────────────────────────────────────
-@app.route("/")
-def index():
-    # Build sign list from verification_set
+@app.route("/api/signs")
+def api_signs():
     signs = []
     if SAMPLES_DIR.exists():
         for folder in sorted(SAMPLES_DIR.iterdir()):
@@ -156,7 +155,17 @@ def index():
                 vids = sorted([v for v in folder.iterdir() if v.suffix.lower() in (".mp4", ".mov", ".avi")])
                 if vids:
                     signs.append({"label": label, "folder": folder.name, "sample": vids[0].name})
-    return render_template("index.html", signs=signs)
+    return jsonify(signs)
+
+
+@app.route("/")
+def index():
+    return send_from_directory(ROOT / "static" / "react", "index.html")
+
+
+@app.route("/assets/<path:filename>")
+def assets(filename):
+    return send_from_directory(ROOT / "static" / "react" / "assets", filename)
 
 
 @app.route("/sample/<folder>/<filename>")

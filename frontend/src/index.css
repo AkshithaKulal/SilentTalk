@@ -1,0 +1,17 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --color-brand: #7c3aed;
+  --color-brand-light: #a78bfa;
+}
+
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  background: #0a0a0f;
+  color: #e2e8f0;
+}
+
+.kannada {
+  font-family: 'Noto Sans Kannada', 'Inter', sans-serif;
+}
