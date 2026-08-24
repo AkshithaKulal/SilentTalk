@@ -61,11 +61,12 @@ if (Test-Path "$ckptPath\adapter_model.safetensors") {
     Write-Host "      [OK] LoRA checkpoint already present" -ForegroundColor Green
 } else {
     Write-Host "      Downloading from Google Drive (~23MB)..."
-    python -c "import gdown; gdown.download_folder('https://drive.google.com/drive/folders/1RgEDcwom1ny6IFfnSvFyfTNzYAeA4DPd', output='checkpoint-1500-inference', quiet=False, use_cookies=False); print('Done.')"
+    python -c "import gdown; gdown.download_folder('https://drive.google.com/drive/folders/1RgEDcwom1ny6IFfnSvFyfTNzYAeA4DPd', output='checkpoint-1500-inference', quiet=False, use_cookies=False, fuzzy=True); print('Done.')" 2>&1
     if (Test-Path "$ckptPath\adapter_model.safetensors") {
         Write-Host "      [OK] checkpoint-1500 downloaded" -ForegroundColor Green
     } else {
-        Write-Host "      [WARN] Download may have failed - check Drive permissions" -ForegroundColor Yellow
+        Write-Host "      [WARN] Download failed. Manually place checkpoint-1500-inference/ folder at repo root." -ForegroundColor Red
+        Write-Host "      Drive link: https://drive.google.com/drive/folders/1RgEDcwom1ny6IFfnSvFyfTNzYAeA4DPd" -ForegroundColor Yellow
     }
 }
 
