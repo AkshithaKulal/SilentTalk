@@ -58,9 +58,19 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#0a0a0f]">
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: '#060912' }}>
       <Header status={status} />
-      <main className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-4 p-4 max-w-[1600px] mx-auto w-full">
+      <main style={{
+        flex: 1,
+        display: 'grid',
+        gridTemplateColumns: 'repeat(3, 1fr)',
+        gap: 16,
+        padding: 16,
+        maxWidth: 1600,
+        margin: '0 auto',
+        width: '100%',
+        alignItems: 'start',
+      }}>
         <SignSelector onSelect={setSelectedSign} selected={selectedSign} />
         <WebcamCapture selectedSign={selectedSign} onPrediction={onPrediction} />
         <PredictionPanel

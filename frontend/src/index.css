@@ -2,16 +2,71 @@
 
 @theme {
   --font-sans: 'Inter', system-ui, sans-serif;
-  --color-brand: #7c3aed;
-  --color-brand-light: #a78bfa;
 }
 
-body {
+:root {
+  --bg-base:    #060912;
+  --bg-card:    #0d1117;
+  --bg-card2:   #111827;
+  --bg-hover:   #161d2e;
+  --border:     rgba(255,255,255,0.06);
+  --border-accent: rgba(99,102,241,0.3);
+  --indigo:     #6366f1;
+  --indigo-dim: #4338ca;
+  --teal:       #14b8a6;
+  --amber:      #f59e0b;
+  --green:      #22c55e;
+  --red:        #ef4444;
+  --text-1:     #f1f5f9;
+  --text-2:     #94a3b8;
+  --text-3:     #475569;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
   font-family: 'Inter', system-ui, sans-serif;
-  background: #0a0a0f;
-  color: #e2e8f0;
+  background: var(--bg-base);
+  color: var(--text-1);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
 }
 
 .kannada {
   font-family: 'Noto Sans Kannada', 'Inter', sans-serif;
 }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+
+/* Card base */
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+}
+
+/* Gradient text */
+.grad-text {
+  background: linear-gradient(135deg, #818cf8, #6366f1, #4f46e5);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Glowing border */
+.glow-border {
+  border-color: rgba(99,102,241,0.4);
+  box-shadow: 0 0 0 1px rgba(99,102,241,0.15), 0 0 20px rgba(99,102,241,0.08);
+}
+
+/* Sign category colors */
+.cat-greeting  { --cat: #6366f1; }
+.cat-pronoun   { --cat: #14b8a6; }
+.cat-people    { --cat: #f59e0b; }
+.cat-place     { --cat: #22c55e; }
+.cat-time      { --cat: #f472b6; }
+.cat-default   { --cat: #6366f1; }
