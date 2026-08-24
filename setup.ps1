@@ -3,7 +3,6 @@
 # Creates 'silent-venv', installs all dependencies, verifies model artifacts.
 # Run once after cloning: .\setup.ps1
 
-Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 Write-Host "╔══════════════════════════════════════════╗" -ForegroundColor Cyan
@@ -11,13 +10,17 @@ Write-Host "║         SilentTalk Setup Script          ║" -ForegroundColor C
 Write-Host "╚══════════════════════════════════════════╝`n" -ForegroundColor Cyan
 
 # ── 1. Python check ──────────────────────────────────────────────────────────
-Write-Host "[1/6] Checking Python..." -ForegroundColor Yellow
-$pyver = python --version 2>&1
-if ($LASTEXITCODE -ne 0) { Write-Error "Python not found. Install Python 3.10+ from python.org" }
-Write-Host "      $pyver" -ForegroundColor Green
+Write-Host "[1/7] Checking Python..." -ForegroundColor Yellow
+try {
+    $pyver = & python --version 2>&1
+    Write-Host "      $pyver" -ForegroundColor Green
+} catch {
+    Write-Host "ERROR: Python not found. Install Python 3.10+ from https://python.org" -ForegroundColor Red
+    exit 1
+}
 
 # ── 2. Create venv ───────────────────────────────────────────────────────────
-Write-Host "[2/6] Creating virtual environment 'silent-venv'..." -ForegroundColor Yellow
+Write-Host "[2/7] Creating virtual environment 'silent-venv'..." -ForegroundColor Yellow
 if (-not (Test-Path "silent-venv")) {
     python -m venv silent-venv
     Write-Host "      Created silent-venv/" -ForegroundColor Green
@@ -30,7 +33,7 @@ if (-not (Test-Path "silent-venv")) {
 Write-Host "      Activated silent-venv" -ForegroundColor Green
 
 # ── 3. Upgrade pip + install dependencies ────────────────────────────────────
-Write-Host "[3/6] Installing dependencies..." -ForegroundColor Yellow
+Write-Host "[3/7] Installing dependencies..." -ForegroundColor Yellow
 python -m pip install --upgrade pip --quiet
 
 $packages = @(
@@ -58,7 +61,7 @@ foreach ($pkg in $packages) {
 }
 
 # ── 4. Verify model artifacts ────────────────────────────────────────────────
-Write-Host "[4/6] Checking model artifacts..." -ForegroundColor Yellow
+Write-Host "[4/7] Checking model artifacts..." -ForegroundColor Yellow
 
 $artifacts = @{
     "ISL Classifier"         = "isl_recognition\transfer_pack\sign_classifier.joblib"
