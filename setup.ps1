@@ -30,12 +30,22 @@ Write-Host "      Activated silent-venv" -ForegroundColor Green
 Write-Host "[3/7] Installing dependencies..." -ForegroundColor Yellow
 python -m pip install --upgrade pip --quiet
 
-$packages = @("numpy<2.0","torch","transformers","peft","mediapipe","scikit-learn","joblib","opencv-python","pillow","scipy","flask","sounddevice","pyttsx3","gdown")
+$packages = @("torch","transformers","peft","mediapipe","scikit-learn","joblib","opencv-python","pillow","flask","sounddevice","pyttsx3","gdown")
 foreach ($pkg in $packages) {
     Write-Host "      Installing $pkg..." -NoNewline
     pip install $pkg --quiet
     Write-Host " done" -ForegroundColor Green
 }
+
+# Pin numpy + opencv together to avoid version conflict (numpy<2.0 needed for scikit-learn joblib compatibility)
+Write-Host "      Pinning numpy + opencv versions..." -NoNewline
+pip install "numpy<2.0" "opencv-python==4.10.0.84" --force-reinstall --quiet 2>&1 | Out-Null
+Write-Host " done" -ForegroundColor Green
+
+# Upgrade scipy (old scipy uses np.long which doesn't exist in numpy 1.26+)
+Write-Host "      Upgrading scipy..." -NoNewline
+pip install "scipy>=1.11" --quiet
+Write-Host " done" -ForegroundColor Green
 
 # IndicTransToolkit - needs C++ Build Tools, fall back to source install
 Write-Host "      Installing IndicTransToolkit..." -NoNewline
@@ -136,5 +146,5 @@ Write-Host "    npm run build" -ForegroundColor Green
 Write-Host "    cd .." -ForegroundColor Green
 Write-Host "    . .\silent-venv\Scripts\Activate.ps1" -ForegroundColor Green
 Write-Host "    python app.py" -ForegroundColor Green
-Write-Host "    Open: http://localhost:5000" -ForegroundColor Green
+Write-Host "    Open in Chrome/Edge: http://localhost:5000" -ForegroundColor Green
 Write-Host "==========================================" -ForegroundColor Cyan
