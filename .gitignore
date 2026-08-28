@@ -1,4 +1,4 @@
-# Python / env
+# ── Python / env ─────────────────────────────────────────────────────────────
 __pycache__/
 *.py[cod]
 *.egg-info/
@@ -8,70 +8,71 @@ silent-venv/
 .env
 *.log
 
-# Node / frontend build
+# ── Node / frontend ───────────────────────────────────────────────────────────
 node_modules/
 static/react/
 /package-lock.json
 /package.json
 
-# Flask / app artifacts
+# ── Flask / app artifacts ─────────────────────────────────────────────────────
 test_results/
 *.bundle
 
-# Temp/utility scripts
-compare_models.py
-run_verification.py
-translate_vocab50.py
-
-# Hugging Face / models (re-download on the other machine)
+# ── Hugging Face / large model weights (re-download on other machine) ─────────
 **/model_cache/
 **/pytorch_model.bin
 
-# Ignore heavy weight files globally, then allow Stage 2 LoRA checkpoint artifacts
+# ── Large binary weights — ignore all .safetensors and .bin globally …
 **/*.safetensors
-!**/stage2_output/**/*.safetensors
-!**/stage2_kn_tcy_output/**/*.safetensors
-!**/stage2_synthetic_brx_output/**/*.safetensors
 **/*.bin
-!**/stage2_output/**/*.bin
-!**/stage2_kn_tcy_output/**/*.bin
-!**/stage2_synthetic_brx_output/**/*.bin
+# … EXCEPT the LoRA checkpoint-1500-inference at repo root (small, needed for inference)
+!checkpoint-1500-inference/*.safetensors
+!checkpoint-1500-inference/*.bin
 
-# Large datasets
+# ── Large datasets ────────────────────────────────────────────────────────────
 **/samanantar_en_kn.csv
 **/stage1_data/
 **/stage2_data/
 **/*.csv.bak
 
-# ISL / MediaPipe Track 2 — keep code, ignore heavy outputs + models
+# ── ISL / MediaPipe — ignore heavy extraction outputs and downloaded model files
 isl_recognition/landmarks/
 isl_recognition/landmarks_smoke/
 isl_recognition/models/*.task
+
+# artifacts/ folder — ignore everything EXCEPT the json mapping
 isl_recognition/artifacts/*
 !isl_recognition/artifacts/tulu_sentence_map_kn.json
 
-# Self-recorded ISL videos (keep folder tree + labels.csv; ignore media)
+# transfer_pack/ — ALL files tracked (joblib models, reports, mapping)
+# sign_classifier.joblib, label_encoder.joblib, train_report.json etc. are committed
+# Do NOT add any ignore rule for transfer_pack/
+
+# ── Raw video recordings (large media — keep folder structure, ignore media) ──
 raw_video/**/*.mp4
 raw_video/**/*.mov
 raw_video/**/*.avi
 raw_video/**/*.mkv
+isl_recognition/transfer_pack/demo_video.MOV
+isl_recognition/verification_set/
 
-
-# Training outputs / checkpoints
-# Stage 1 full runs can be large — keep ignored; Stage 2 LoRA checkpoint is small enough to push
+# ── Training outputs / checkpoints ───────────────────────────────────────────
 **/stage1_output/
+**/stage2_output/
+**/stage2_kn_tcy_output/
+**/stage2_synthetic_brx_output/
+**/stage2_synthetic_sat_output/
 **/runs/
 **/wandb/
 
-# OS / IDE
+# ── OS / IDE ──────────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
 .idea/
 .vscode/
 
-# Nested git metadata from cloned toolkit if any
+# ── Nested git metadata ───────────────────────────────────────────────────────
 IndicTrans2/huggingface_interface/IndicTransToolkit_repo/.git/
 
-# Temporary reports ok to keep small txt; ignore huge dumps
+# ── Misc temp files ───────────────────────────────────────────────────────────
 **/tcywiki-latest-pages-articles.xml.bz2
-node_modules

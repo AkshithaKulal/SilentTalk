@@ -2,22 +2,25 @@
 import { motion, AnimatePresence } from "framer-motion"
 import { Camera, Square, Loader2, CameraOff, Zap, Radio } from "lucide-react"
 
-const LIVE_INTERVAL_MS = 2500   // predict every 2.5 seconds
-const CAPTURE_FRAMES  = 20      // collect 20 frames over 2 seconds
+const LIVE_CAPTURE_FRAMES   = 10   // fewer frames for live mode → faster backend
+const MANUAL_CAPTURE_FRAMES = 20   // more frames for manual → better accuracy
+const LIVE_COLLECT_MS       = 1500 // collect over 1.5s in live mode
 
 export default function WebcamCapture({ selectedSign, onPrediction }) {
-  const videoRef    = useRef(null)
-  const canvasRef   = useRef(null)   // overlay canvas
-  const liveTimerRef = useRef(null)
-  const frameTimerRef = useRef(null)
+  const videoRef         = useRef(null)
+  const canvasRef        = useRef(null)
+  // Keep onPrediction in a ref so runPredict/live loop never restart when App re-renders
+  const onPredictionRef  = useRef(onPrediction)
+  useEffect(() => { onPredictionRef.current = onPrediction }, [onPrediction])
 
   const [stream, setStream]         = useState(null)
   const [liveMode, setLiveMode]     = useState(false)
   const [processing, setProcessing] = useState(false)
   const [capturing, setCapturing]   = useState(false)
-  const [livePred, setLivePred]     = useState(null)   // { label, conf }
+  const [livePred, setLivePred]     = useState(null)
   const [countdown, setCountdown]   = useState(0)
   const [progress, setProgress]     = useState(0)
+  const [nextIn, setNextIn]         = useState(0)   // seconds until next live prediction
   const [error, setError]           = useState("")
 
   // ── Draw overlay on canvas ──────────────────────────────────────────────────
@@ -64,28 +67,42 @@ export default function WebcamCapture({ selectedSign, onPrediction }) {
   }, [livePred])
 
   // ── Collect frames helper ───────────────────────────────────────────────────
-  const collectFrames = useCallback(() => {
+  const collectFrames = useCallback((frameCount = MANUAL_CAPTURE_FRAMES, collectMs = 2000) => {
     return new Promise((resolve) => {
       const frames = []
       const cap = document.createElement("canvas")
-      cap.width = 320; cap.height = 240
+      cap.width = 160; cap.height = 120   // smaller = faster MediaPipe, landmarks are normalized
       const ctx = cap.getContext("2d")
-      const TOTAL = CAPTURE_FRAMES
       let count = 0
-      const interval = setInterval(() => {
+      let done = false
+
+      const finish = () => {
+        if (done) return
+        done = true
+        clearInterval(intervalId)
+        clearTimeout(timeoutId)
+        resolve(frames)
+      }
+
+      const intervalId = setInterval(() => {
         if (videoRef.current && videoRef.current.readyState >= 2) {
-          ctx.drawImage(videoRef.current, 0, 0, 320, 240)
-          frames.push(cap.toDataURL("image/jpeg", 0.7))
+          ctx.drawImage(videoRef.current, 0, 0, 160, 120)
+          frames.push(cap.toDataURL("image/jpeg", 0.8))
+          count++
         }
-        count++
-        if (count >= TOTAL) { clearInterval(interval); resolve(frames) }
-      }, 2000 / TOTAL)   // spread over 2s
+        if (count >= frameCount) finish()
+      }, collectMs / frameCount)
+
+      const timeoutId = setTimeout(finish, collectMs + 1000)
     })
   }, [])
 
   // ── Predict helper ──────────────────────────────────────────────────────────
   const runPredict = useCallback(async (frames) => {
-    if (!frames.length) return
+    if (!frames.length) {
+      setError("No frames captured — make sure your camera is visible and try again.")
+      return
+    }
     try {
       const res = await fetch("/api/predict", {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -93,10 +110,11 @@ export default function WebcamCapture({ selectedSign, onPrediction }) {
       })
       const data = await res.json()
       if (data.error) throw new Error(data.error)
+      setError("")
       setLivePred({ label: data.top_label, conf: data.top_conf })
-      onPrediction(data)
+      onPredictionRef.current(data)   // use ref — never causes loop restart
     } catch (e) { setError("Prediction error: " + e.message) }
-  }, [onPrediction])
+  }, [])  // no deps — stable for the lifetime of the component
 
   // ── Live mode loop ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -105,21 +123,35 @@ export default function WebcamCapture({ selectedSign, onPrediction }) {
 
     const loop = async () => {
       while (active) {
+        setNextIn(0)
         setCapturing(true)
-        const frames = await collectFrames()
+        const frames = await collectFrames(LIVE_CAPTURE_FRAMES, LIVE_COLLECT_MS)
         setCapturing(false)
         if (!active) break
         setProcessing(true)
+        const t0 = Date.now()
         await runPredict(frames)
+        const elapsed = Date.now() - t0
         setProcessing(false)
         if (!active) break
-        // brief pause before next round
-        await new Promise(r => setTimeout(r, 300))
+        // Brief pause then show countdown until next capture
+        const PAUSE = 500
+        await new Promise(r => setTimeout(r, PAUSE))
+        if (!active) break
+        // Show a live "next in Xs" countdown
+        const WAIT = 1500
+        const steps = 6
+        for (let i = steps; i >= 1; i--) {
+          if (!active) break
+          setNextIn(Math.round((i / steps) * (WAIT / 1000) * 10) / 10)
+          await new Promise(r => setTimeout(r, WAIT / steps))
+        }
+        setNextIn(0)
       }
     }
     loop()
-    return () => { active = false }
-  }, [liveMode, stream, collectFrames, runPredict])
+    return () => { active = false; setNextIn(0) }
+  }, [liveMode, stream])  // collectFrames & runPredict are stable — no extra deps needed
 
   // ── Manual capture ──────────────────────────────────────────────────────────
   const startManualCapture = async () => {
@@ -127,7 +159,7 @@ export default function WebcamCapture({ selectedSign, onPrediction }) {
     setCapturing(true); setCountdown(3); setProgress(0)
     const frames = []
     const canvas = document.createElement("canvas")
-    canvas.width = 320; canvas.height = 240
+    canvas.width = 160; canvas.height = 120
     const ctx = canvas.getContext("2d")
     const DURATION = 3000, INTERVAL = 100
     let elapsed = 0
@@ -136,8 +168,10 @@ export default function WebcamCapture({ selectedSign, onPrediction }) {
         elapsed += INTERVAL
         setProgress(elapsed / DURATION * 100)
         setCountdown(Math.ceil((DURATION - elapsed) / 1000))
-        ctx.drawImage(videoRef.current, 0, 0, 320, 240)
-        frames.push(canvas.toDataURL("image/jpeg", 0.7))
+        if (videoRef.current && videoRef.current.readyState >= 2) {
+          ctx.drawImage(videoRef.current, 0, 0, 160, 120)
+          frames.push(canvas.toDataURL("image/jpeg", 0.8))
+        }
         if (elapsed >= DURATION) { clearInterval(interval); resolve() }
       }, INTERVAL)
     })
@@ -161,12 +195,13 @@ export default function WebcamCapture({ selectedSign, onPrediction }) {
     stream?.getTracks().forEach(t => t.stop())
     setStream(null)
     setLivePred(null)
+    setNextIn(0)
   }
 
   const toggleLive = () => {
     if (!stream) return
     setLiveMode(v => !v)
-    if (liveMode) setLivePred(null)
+    if (liveMode) { setLivePred(null); setNextIn(0) }
   }
 
   return (
@@ -181,7 +216,26 @@ export default function WebcamCapture({ selectedSign, onPrediction }) {
           borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
           <span style={{ fontSize: 13, fontWeight: 700, color: "#f1f5f9" }}>Webcam</span>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            {liveMode && (
+            {liveMode && capturing && (
+              <motion.span animate={{ opacity: [1, 0.4, 1] }} transition={{ duration: 1, repeat: Infinity }}
+                style={{ fontSize: 11, color: "#ef4444", display: "flex", alignItems: "center", gap: 4, fontWeight: 700 }}>
+                <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#ef4444",
+                  boxShadow: "0 0 8px #ef4444" }} />
+                CAPTURING
+              </motion.span>
+            )}
+            {liveMode && processing && !capturing && (
+              <span style={{ fontSize: 11, color: "#f59e0b", display: "flex", alignItems: "center", gap: 4, fontWeight: 700 }}>
+                <Loader2 size={10} style={{ animation: "spin 1s linear infinite" }} />
+                ANALYZING
+              </span>
+            )}
+            {liveMode && !capturing && !processing && nextIn > 0 && (
+              <span style={{ fontSize: 11, color: "#6366f1", display: "flex", alignItems: "center", gap: 4 }}>
+                next in {nextIn}s
+              </span>
+            )}
+            {liveMode && !capturing && !processing && nextIn === 0 && (
               <motion.span animate={{ opacity: [1, 0.4, 1] }} transition={{ duration: 1, repeat: Infinity }}
                 style={{ fontSize: 11, color: "#ef4444", display: "flex", alignItems: "center", gap: 4, fontWeight: 700 }}>
                 <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#ef4444",
@@ -290,7 +344,7 @@ export default function WebcamCapture({ selectedSign, onPrediction }) {
 
             <motion.button onClick={toggleLive} whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
               style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                padding: "11px 0", borderRadius: 12, border: "none", cursor: "pointer",
+                padding: "11px 0", borderRadius: 12, cursor: "pointer",
                 background: liveMode ? "linear-gradient(135deg, #dc2626, #ef4444)" : "rgba(239,68,68,0.12)",
                 border: `1px solid ${liveMode ? "transparent" : "rgba(239,68,68,0.25)"}`,
                 color: liveMode ? "white" : "#f87171",
@@ -304,7 +358,7 @@ export default function WebcamCapture({ selectedSign, onPrediction }) {
               whileHover={!capturing && !processing && !liveMode ? { scale: 1.02 } : {}}
               whileTap={!capturing && !processing && !liveMode ? { scale: 0.97 } : {}}
               style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                padding: "11px 0", borderRadius: 12, border: "none",
+                padding: "11px 0", borderRadius: 12,
                 cursor: capturing || processing || liveMode ? "not-allowed" : "pointer",
                 background: capturing || processing || liveMode ? "rgba(34,197,94,0.1)" : "linear-gradient(135deg, #16a34a, #22c55e)",
                 border: `1px solid ${capturing || processing || liveMode ? "rgba(34,197,94,0.2)" : "transparent"}`,

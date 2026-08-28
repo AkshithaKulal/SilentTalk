@@ -1,90 +1,90 @@
                 precision    recall  f1-score   support
 
-         Adult       0.20      0.25      0.22         4
-     Afternoon       0.00      0.00      0.00         3
-       Alright       1.00      0.75      0.86         4
-          Baby       0.67      1.00      0.80         4
-          Bank       0.80      1.00      0.89         4
-           Boy       0.29      0.50      0.36         4
-       Brother       1.00      0.50      0.67         4
-         Child       1.00      0.50      0.67         4
-          City       1.00      1.00      1.00         4
+         Adult       0.00      0.00      0.00         4
+     Afternoon       1.00      0.67      0.80         3
+       Alright       1.00      1.00      1.00         4
+          Baby       0.75      0.75      0.75         4
+          Bank       0.75      0.75      0.75         4
+           Boy       0.00      0.00      0.00         4
+       Brother       1.00      0.25      0.40         4
+         Child       0.50      0.50      0.50         4
+          City       1.00      0.25      0.40         4
          Court       0.80      1.00      0.89         4
          Crowd       1.00      1.00      1.00         4
-      Daughter       0.50      0.25      0.33         4
-       Evening       1.00      0.33      0.50         3
+      Daughter       0.25      0.25      0.25         4
+       Evening       0.75      1.00      0.86         3
          Extra       0.00      0.00      0.00         4
-        Family       1.00      1.00      1.00         3
-        Father       1.00      0.50      0.67         4
+        Family       0.50      1.00      0.67         3
+        Father       0.33      0.50      0.40         4
         Friday       0.75      1.00      0.86         3
-        Friend       0.80      1.00      0.89         4
-          Girl       0.40      0.50      0.44         4
-  Good Morning       0.43      0.75      0.55         4
-Good afternoon       1.00      1.00      1.00         5
-  Good evening       1.00      1.00      1.00         4
-    Good night       1.00      0.25      0.40         4
-   Grandfather       0.80      1.00      0.89         4
-   Grandmother       0.00      0.00      0.00         3
-        Ground       1.00      0.75      0.86         4
-         Hello       0.75      0.75      0.75         4
+        Friend       0.43      0.75      0.55         4
+          Girl       0.25      0.50      0.33         4
+  Good Morning       0.50      0.25      0.33         4
+Good afternoon       0.83      1.00      0.91         5
+  Good evening       1.00      0.50      0.67         4
+    Good night       0.60      0.75      0.67         4
+   Grandfather       1.00      0.75      0.86         4
+   Grandmother       0.50      0.33      0.40         3
+        Ground       1.00      0.50      0.67         4
+         Hello       1.00      0.50      0.67         4
       Hospital       0.80      1.00      0.89         4
-          Hour       1.00      0.33      0.50         3
-         House       0.75      0.75      0.75         4
-   How are you       0.80      1.00      0.89         4
-       Husband       0.75      0.75      0.75         4
-             I       0.67      1.00      0.80         4
+          Hour       1.00      0.67      0.80         3
+         House       1.00      0.25      0.40         4
+   How are you       1.00      1.00      1.00         4
+       Husband       0.67      0.50      0.57         4
+             I       0.57      1.00      0.73         4
          India       0.80      1.00      0.89         4
-          King       1.00      0.75      0.86         4
-       Library       0.57      1.00      0.73         4
-      Location       1.00      0.25      0.40         4
-           Man       1.00      0.75      0.86         4
-        Market       0.50      0.25      0.33         4
-        Minute       1.00      1.00      1.00         3
-        Monday       1.00      0.33      0.50         3
-         Month       0.75      1.00      0.86         3
+          King       1.00      0.25      0.40         4
+       Library       0.50      0.75      0.60         4
+      Location       0.50      0.50      0.50         4
+           Man       0.50      0.75      0.60         4
+        Market       0.67      0.50      0.57         4
+        Minute       0.40      0.67      0.50         3
+        Monday       0.75      1.00      0.86         3
+         Month       0.67      0.67      0.67         3
        Morning       1.00      0.67      0.80         3
-        Mother       0.40      0.50      0.44         4
+        Mother       0.29      0.50      0.36         4
      Neighbour       0.75      0.75      0.75         4
-         Night       0.50      1.00      0.67         3
-        Office       0.80      1.00      0.89         4
-        Parent       0.67      1.00      0.80         4
-          Park       1.00      0.75      0.86         4
-        Player       1.00      0.50      0.67         4
+         Night       1.00      1.00      1.00         3
+        Office       1.00      1.00      1.00         4
+        Parent       0.57      1.00      0.73         4
+          Park       0.75      0.75      0.75         4
+        Player       0.80      1.00      0.89         4
        Pleased       1.00      0.50      0.67         4
-     President       0.60      0.75      0.67         4
-         Queen       0.67      1.00      0.80         4
-    Restaurant       1.00      0.75      0.86         4
-      Saturday       0.67      0.67      0.67         3
+     President       0.50      0.75      0.60         4
+         Queen       0.50      0.75      0.60         4
+    Restaurant       0.67      0.50      0.57         4
+      Saturday       1.00      1.00      1.00         3
         School       1.00      1.00      1.00         4
-        Second       0.67      0.67      0.67         3
-        Sister       0.67      1.00      0.80         4
-           Son       0.50      0.50      0.50         4
- Store or Shop       0.40      1.00      0.57         4
-Street or Road       1.00      1.00      1.00         4
+        Second       0.40      0.67      0.50         3
+        Sister       0.57      1.00      0.73         4
+           Son       0.00      0.00      0.00         4
+ Store or Shop       0.67      1.00      0.80         4
+Street or Road       0.67      1.00      0.80         4
         Sunday       1.00      1.00      1.00         3
-        Temple       1.00      1.00      1.00         4
+        Temple       0.75      0.75      0.75         4
      Thank you       1.00      0.50      0.67         4
-      Thursday       0.40      0.67      0.50         3
-          Time       1.00      1.00      1.00         3
-         Today       0.50      0.33      0.40         3
-      Tomorrow       0.50      0.67      0.57         3
- Train Station       0.75      0.75      0.75         4
-       Tuesday       0.75      1.00      0.86         3
+      Thursday       0.00      0.00      0.00         3
+          Time       0.50      0.33      0.40         3
+         Today       0.43      1.00      0.60         3
+      Tomorrow       0.00      0.00      0.00         3
+ Train Station       0.60      0.75      0.67         4
+       Tuesday       1.00      0.67      0.80         3
     University       1.00      0.75      0.86         4
-     Wednesday       1.00      1.00      1.00         3
+     Wednesday       1.00      0.33      0.50         3
           Week       1.00      0.67      0.80         3
-          Wife       0.67      0.50      0.57         4
-         Woman       0.67      0.50      0.57         4
-          Year       1.00      1.00      1.00         3
-     Yesterday       0.50      0.33      0.40         3
-            he       1.00      0.75      0.86         4
-            it       1.00      1.00      1.00         4
-           she       0.67      1.00      0.80         4
+          Wife       0.40      0.50      0.44         4
+         Woman       0.25      0.25      0.25         4
+          Year       0.50      0.67      0.57         3
+     Yesterday       1.00      0.33      0.50         3
+            he       1.00      0.50      0.67         4
+            it       1.00      0.75      0.86         4
+           she       0.57      1.00      0.73         4
           they       1.00      1.00      1.00         4
-            we       0.67      1.00      0.80         4
-           you       1.00      0.75      0.86         4
-  you (plural)       1.00      0.75      0.86         4
+            we       1.00      1.00      1.00         4
+           you       0.60      0.75      0.67         4
+  you (plural)       1.00      1.00      1.00         4
 
-      accuracy                           0.74       314
-     macro avg       0.77      0.73      0.72       314
-  weighted avg       0.78      0.74      0.73       314
+      accuracy                           0.66       314
+     macro avg       0.69      0.66      0.64       314
+  weighted avg       0.69      0.66      0.64       314

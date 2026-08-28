@@ -43,9 +43,10 @@ _label_enc     = None
 _translator    = None
 _tts_model     = None
 _tts_tokenizer = None
-_pose_landmarker = None   # cached — initialized once, reused across all requests
+_pose_landmarker = None
 _hand_landmarker = None
 _load_lock     = threading.Lock()
+_predict_lock  = threading.Lock()   # MediaPipe landmarkers are not thread-safe
 
 
 def get_classifier():
@@ -83,8 +84,10 @@ def get_translator():
 def get_tts():
     global _tts_model, _tts_tokenizer
     if _tts_model is None:
+        import torch
         from transformers import VitsModel, AutoTokenizer as AT
-        _tts_model = VitsModel.from_pretrained("facebook/mms-tts-kan")
+        _tts_device = "cuda" if torch.cuda.is_available() else "cpu"
+        _tts_model = VitsModel.from_pretrained("facebook/mms-tts-kan").to(_tts_device)
         _tts_tokenizer = AT.from_pretrained("facebook/mms-tts-kan")
         _tts_model.eval()
     return _tts_model, _tts_tokenizer
@@ -105,10 +108,11 @@ def translate_text(text: str) -> str:
 def synthesize_wav(text: str) -> bytes:
     import torch, scipy.io.wavfile
     model, tokenizer = get_tts()
-    inputs = tokenizer(text, return_tensors="pt")
+    device = next(model.parameters()).device
+    inputs = {k: v.to(device) for k, v in tokenizer(text, return_tensors="pt").items()}
     with torch.no_grad():
         waveform = model(**inputs).waveform
-    audio = waveform.squeeze().numpy()
+    audio = waveform.squeeze().cpu().numpy()
     audio = (audio / max(np.abs(audio).max(), 1e-6) * 32767).astype(np.int16)
     buf = io.BytesIO()
     scipy.io.wavfile.write(buf, model.config.sampling_rate, audio)
@@ -145,13 +149,14 @@ def predict_frame_sequence(frames_bgr: list) -> list[tuple[str, float]]:
         _hand_landmarker = vision.HandLandmarker.create_from_options(hand_opts)
 
     feats = []
-    for frame in frames_bgr:
-        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        rgb = np.ascontiguousarray(rgb)
-        mp_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
-        pr = _pose_landmarker.detect(mp_img)
-        hr = _hand_landmarker.detect(mp_img)
-        feats.append(frame_feature(pr, hr))
+    with _predict_lock:   # MediaPipe landmarkers are not thread-safe
+        for frame in frames_bgr:
+            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            rgb = np.ascontiguousarray(rgb)
+            mp_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+            pr = _pose_landmarker.detect(mp_img)
+            hr = _hand_landmarker.detect(mp_img)
+            feats.append(frame_feature(pr, hr))
 
     if not feats:
         return []
@@ -256,8 +261,11 @@ def api_tts():
 @app.route("/api/status")
 def api_status():
     clf_ok = (ARTIFACTS / "sign_classifier.joblib").exists()
-    model_ok = (HF_BASE / "model_cache" / "indictrans2-en-indic-1B").exists() or True  # falls back to HF Hub
-    lora_ok = (HF_BASE / "stage1_output" / "checkpoint-1500" / "adapter_model.safetensors").exists()
+    model_ok = (HF_BASE / "model_cache" / "indictrans2-en-indic-1B").exists()
+    lora_ok = (
+        (HF_BASE / "stage1_output" / "checkpoint-1500" / "adapter_model.safetensors").exists()
+        or (_DOWNLOADED_LORA / "adapter_model.safetensors").exists()
+    )
     mms_ok = Path.home().joinpath(".cache/huggingface/hub/models--facebook--mms-tts-kan").exists()
     return jsonify({
         "classifier": clf_ok,
@@ -269,4 +277,4 @@ def api_status():
 
 if __name__ == "__main__":
     print("Starting SilentTalk server at http://localhost:5000")
-    app.run(host="0.0.0.0", port=5000, debug=False)
+    app.run(host="0.0.0.0", port=5000, debug=False, threaded=True)
