@@ -88,9 +88,9 @@
     "you",
     "you (plural)"
   ],
-  "accuracy": 0.6624203821656051,
-  "top3": 0.8184713375796179,
-  "top5": 0.8853503184713376,
-  "feature_dim": 2088,
+  "accuracy": 0.7388535031847133,
+  "top3": 0.8821656050955414,
+  "top5": 0.9426751592356688,
+  "feature_dim": 900,
   "model_path": "isl_recognition\\transfer_pack\\sign_classifier.joblib"
 }

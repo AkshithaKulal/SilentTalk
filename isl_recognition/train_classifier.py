@@ -34,73 +34,23 @@ FEAT_DIM_BASE = 225  # pose33*3 + left_hand21*3 + right_hand21*3
 
 
 def sequence_to_features(seq: np.ndarray) -> np.ndarray:
-    """seq: (T, D) -> enriched fixed-length feature vector.
+    """seq: (T, D) -> fixed-length feature vector.
 
-    Improvements over the original mean/std/min/max:
-    1. Velocity (frame-to-frame differences) mean + std  — captures motion dynamics
-    2. Wrist-normalised hand coords                      — removes position bias,
-       so the sign meaning isn't mixed up with where in frame the hand is
-    3. Mid-sequence snapshot (frame at 25%, 50%, 75%)    — preserves key pose stages
-    4. Original stats kept for backwards-compatible dims
+    Uses mean/std/min/max temporal pooling (900 dims) — proven to work well
+    on small datasets (14-22 samples/class). Richer features (velocity,
+    keyframes) overfitted with this dataset size.
     """
     if seq.ndim != 2 or seq.shape[0] == 0:
-        # Return zeros matching the new feature dim (computed below)
-        return np.zeros(_feature_dim(), dtype=np.float32)
-
-    T, D = seq.shape
-
-    # ── 1. Original temporal stats (900 dims) ────────────────────────────────
+        return np.zeros(225 * 4, dtype=np.float32)
     mean = seq.mean(axis=0)
     std  = seq.std(axis=0)
     mn   = seq.min(axis=0)
     mx   = seq.max(axis=0)
-
-    # ── 2. Velocity stats (450 dims) ─────────────────────────────────────────
-    if T > 1:
-        vel = np.diff(seq, axis=0)          # (T-1, D)
-        vel_mean = vel.mean(axis=0)
-        vel_std  = vel.std(axis=0)
-    else:
-        vel_mean = np.zeros(D, dtype=np.float32)
-        vel_std  = np.zeros(D, dtype=np.float32)
-
-    # ── 3. Wrist-normalised dominant hand (63 dims) ──────────────────────────
-    # Layout: pose(33*3=99) | left_hand(21*3=63) | right_hand(21*3=63)
-    # Use right wrist (pose landmark 16, 0-indexed x at col 16*3=48) as anchor
-    # Normalise right-hand landmarks relative to right wrist
-    POSE_DIM = 99
-    RIGHT_HAND_START = POSE_DIM + 63          # right hand block start
-    RIGHT_WRIST_X = POSE_DIM + 63             # right hand landmark 0 = wrist
-    if D >= RIGHT_HAND_START + 63:
-        rh = seq[:, RIGHT_HAND_START:RIGHT_HAND_START + 63].copy()   # (T, 63)
-        wrist = seq[:, RIGHT_WRIST_X:RIGHT_WRIST_X + 3]              # (T, 3)
-        # Subtract wrist per frame then pool
-        rh_norm = rh.reshape(T, 21, 3) - wrist[:, np.newaxis, :]    # broadcast
-        rh_norm = rh_norm.reshape(T, 63)
-        rh_mean = rh_norm.mean(axis=0)
-    else:
-        rh_mean = np.zeros(63, dtype=np.float32)
-
-    # ── 4. Key-frame snapshots at 25 / 50 / 75 percent (3 × D = 675 dims) ───
-    def frame_at(pct):
-        idx = min(int(T * pct), T - 1)
-        return seq[idx]
-
-    snap25 = frame_at(0.25)
-    snap50 = frame_at(0.50)
-    snap75 = frame_at(0.75)
-
-    return np.concatenate([
-        mean, std, mn, mx,          # 900  — original stats
-        vel_mean, vel_std,          # 450  — motion dynamics
-        rh_mean,                    #  63  — wrist-relative hand shape
-        snap25, snap50, snap75,     # 675  — key-frame snapshots
-    ]).astype(np.float32)           # total: 2088
+    return np.concatenate([mean, std, mn, mx]).astype(np.float32)  # 900 dims
 
 
 def _feature_dim() -> int:
-    """Return the expected feature dimension (used for zero-padding fallback)."""
-    return 225 * 4 + 225 * 2 + 63 + 225 * 3   # 2088
+    return 225 * 4  # 900
 
 
 def load_dataset(landmarks_dir: Path, min_per_class: int):
@@ -192,16 +142,15 @@ def main() -> int:
             (
                 "mlp",
                 MLPClassifier(
-                    hidden_layer_sizes=(1024, 512, 256),  # deeper for richer features
+                    hidden_layer_sizes=(512, 256),
                     activation="relu",
-                    alpha=5e-4,          # slightly stronger L2 for small dataset
-                    batch_size=32,       # smaller batch = more gradient updates
-                    learning_rate="adaptive",
+                    alpha=1e-4,
+                    batch_size=64,
                     learning_rate_init=1e-3,
-                    max_iter=400,        # more iters for convergence
+                    max_iter=200,
                     early_stopping=True,
-                    validation_fraction=0.15,
-                    n_iter_no_change=20,
+                    validation_fraction=0.1,
+                    n_iter_no_change=15,
                     random_state=args.seed,
                     verbose=False,
                 ),
