@@ -1,6 +1,6 @@
 {
   "samples_total_on_disk": 1568,
-  "samples_used": 1568,
+  "samples_used": 7840,
   "num_classes": 84,
   "classes": [
     "Adult",
@@ -88,9 +88,9 @@
     "you",
     "you (plural)"
   ],
-  "accuracy": 0.7388535031847133,
-  "top3": 0.8821656050955414,
-  "top5": 0.9426751592356688,
+  "accuracy": 0.9872448979591837,
+  "top3": 0.9955357142857143,
+  "top5": 0.9993622448979592,
   "feature_dim": 900,
   "model_path": "isl_recognition\\transfer_pack\\sign_classifier.joblib"
 }
