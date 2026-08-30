@@ -53,7 +53,8 @@ export default function PredictionPanel({
   const animKey = prediction ? `${prediction.top_label}-${predCountRef.current}` : "empty"
 
   const conf   = prediction?.top_conf ?? 0
-  const canAdd = !!prediction && !!translation && conf >= 60 && !translating
+  // canAdd: only needs prediction + confidence — translation happens on click
+  const canAdd = !!prediction && conf >= 60 && !translating && !isSpeaking
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -149,7 +150,7 @@ export default function PredictionPanel({
 
                 {/* Kannada translation */}
                 <AnimatePresence>
-                  {translating && !translation && (
+                  {translating && (
                     <motion.div key="loading" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                       style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px',
                         borderRadius: 10, background: '#f8fafc', border: '1px solid #e2e8f0' }}>
@@ -157,7 +158,7 @@ export default function PredictionPanel({
                       <span style={{ fontSize: 12, color: '#64748b', fontWeight: 500 }}>Translating to Kannada...</span>
                     </motion.div>
                   )}
-                  {translation && (
+                  {translation && !translating && (
                     <motion.div key="done" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
                       style={{ padding: '10px 12px', borderRadius: 10,
                         background: 'rgba(13,148,136,0.04)', border: '1px solid rgba(13,148,136,0.15)' }}>
@@ -176,15 +177,15 @@ export default function PredictionPanel({
                 {/* Action buttons */}
                 <div style={{ display: 'flex', gap: 8 }}>
                   <motion.button onClick={onSpeakWord}
-                    disabled={!translation || isSpeaking}
-                    whileHover={translation && !isSpeaking ? { scale: 1.02 } : {}}
-                    whileTap={translation && !isSpeaking ? { scale: 0.97 } : {}}
+                    disabled={!prediction || isSpeaking}
+                    whileHover={prediction && !isSpeaking ? { scale: 1.02 } : {}}
+                    whileTap={prediction && !isSpeaking ? { scale: 0.97 } : {}}
                     style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                       padding: '9px 0', borderRadius: 10,
                       background: '#f8fafc', border: '1px solid #e2e8f0',
-                      color: !translation || isSpeaking ? '#94a3b8' : '#334155',
+                      color: !prediction || isSpeaking ? '#94a3b8' : '#334155',
                       fontSize: 12, fontWeight: 600,
-                      cursor: !translation || isSpeaking ? 'not-allowed' : 'pointer',
+                      cursor: !prediction || isSpeaking ? 'not-allowed' : 'pointer',
                       boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
                     {speakingTarget === 'word' && isSpeaking
                       ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} />
@@ -193,7 +194,7 @@ export default function PredictionPanel({
                   </motion.button>
 
                   <motion.button
-                    onClick={() => canAdd && onAddToSentence(prediction.top_label, conf, translation)}
+                    onClick={() => canAdd && onAddToSentence(prediction.top_label, conf)}
                     disabled={!canAdd}
                     whileHover={canAdd ? { scale: 1.02 } : {}}
                     whileTap={canAdd ? { scale: 0.97 } : {}}
@@ -206,7 +207,10 @@ export default function PredictionPanel({
                       fontSize: 12, fontWeight: 700,
                       cursor: canAdd ? 'pointer' : 'not-allowed',
                       boxShadow: canAdd ? '0 4px 12px rgba(13,148,136,0.25)' : 'none' }}>
-                    <Plus size={13} /> Add to Sentence
+                    {translating
+                      ? <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} />
+                      : <Plus size={13} />}
+                    {translating ? 'Translating...' : 'Add to Sentence'}
                   </motion.button>
                 </div>
 

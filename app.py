@@ -8,7 +8,7 @@ Run:  uvicorn app:app --host 0.0.0.0 --port 5000
 import asyncio, base64, io, json, re, sys, threading
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 
 import numpy as np
 import cv2
@@ -71,6 +71,12 @@ _tts_tokenizer   = None
 _pose_landmarker = None
 _hand_landmarker = None
 _predict_lock    = threading.Lock()   # MediaPipe is not thread-safe
+
+# ── translation cache (Fix 3) ─────────────────────────────────────────────────
+# Avoids hitting the 2-4s GPU model for words already translated this session.
+# Key: English word (lowercase) → Kannada translation string
+_translation_cache: dict[str, str] = {}
+_cache_lock = threading.Lock()
 
 # ── voice presets ─────────────────────────────────────────────────────────────
 VOICE_PRESETS = {
@@ -154,6 +160,63 @@ def get_tts():
     return _tts_model, _tts_tokenizer
 
 
+# ── Fast TTS — mms-tts-kan, always <0.5s, for single-word Speak button ───────
+_fast_tts_model     = None
+_fast_tts_tokenizer = None
+
+def get_fast_tts():
+    global _fast_tts_model, _fast_tts_tokenizer
+    if _fast_tts_model is None:
+        import torch
+        from transformers import VitsModel, AutoTokenizer as AT
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        _fast_tts_model = VitsModel.from_pretrained("facebook/mms-tts-kan").to(device)
+        _fast_tts_tokenizer = AT.from_pretrained("facebook/mms-tts-kan")
+        _fast_tts_model.eval()
+    return _fast_tts_model, _fast_tts_tokenizer
+
+
+def synthesize_wav(text: str, voice: str = DEFAULT_VOICE, fast: bool = False) -> bytes:
+    """Generate Kannada speech.
+    fast=True  → mms-tts-kan (<0.5s)  — single word preview
+    fast=False → indic-parler-tts (3-6s, high quality) — full sentence
+    """
+    import torch, scipy.io.wavfile
+
+    if fast:
+        # Fast path: mms-tts-kan, instant
+        model, tokenizer = get_fast_tts()
+        device = next(model.parameters()).device
+        inputs = {k: v.to(device) for k, v in tokenizer(text, return_tensors="pt").items()}
+        with torch.no_grad():
+            audio = model(**inputs).waveform.squeeze().cpu().numpy().astype(np.float32)
+        sample_rate = model.config.sampling_rate
+    else:
+        # Quality path: parler-tts with voice description
+        model, tokenizer = get_tts()
+        device = next(model.parameters()).device
+        tts_type = getattr(model, "_tts_type", "mms")
+
+        if tts_type == "parler":
+            desc       = VOICE_PRESETS.get(voice, VOICE_PRESETS[DEFAULT_VOICE])
+            input_ids  = tokenizer(desc, return_tensors="pt").input_ids.to(device)
+            prompt_ids = tokenizer(text, return_tensors="pt").input_ids.to(device)
+            with torch.no_grad():
+                gen = model.generate(input_ids=input_ids, prompt_input_ids=prompt_ids)
+            audio = gen.cpu().numpy().squeeze().astype(np.float32)
+        else:
+            inputs = {k: v.to(device) for k, v in tokenizer(text, return_tensors="pt").items()}
+            with torch.no_grad():
+                audio = model(**inputs).waveform.squeeze().cpu().numpy().astype(np.float32)
+
+        sample_rate = model.config.sampling_rate
+
+    audio_i16 = (audio / max(np.abs(audio).max(), 1e-6) * 32767).astype(np.int16)
+    buf = io.BytesIO()
+    scipy.io.wavfile.write(buf, sample_rate, audio_i16)
+    return buf.getvalue()
+
+
 def _init_mediapipe():
     global _pose_landmarker, _hand_landmarker
     if _pose_landmarker is not None:
@@ -206,7 +269,15 @@ def predict_frame_sequence(frames_bgr: list) -> list[tuple[str, float]]:
 
 
 def translate_text(text: str) -> str:
+    """Translate English gloss to Kannada. Results are cached to avoid repeat GPU calls."""
     import torch
+    key = text.strip().lower()
+
+    # Check cache first (Fix 3)
+    with _cache_lock:
+        if key in _translation_cache:
+            return _translation_cache[key]
+
     model, tokenizer, ip, device = get_translator()
     batch = ip.preprocess_batch([text], src_lang="eng_Latn", tgt_lang="kan_Knda")
     inputs = tokenizer(batch, return_tensors="pt", truncation=True,
@@ -216,7 +287,54 @@ def translate_text(text: str) -> str:
                              repetition_penalty=1.3, no_repeat_ngram_size=3)
     decoded = tokenizer.batch_decode(out, skip_special_tokens=True,
                                      clean_up_tokenization_spaces=True)
-    return ip.postprocess_batch(decoded, lang="kan_Knda")[0]
+    result = ip.postprocess_batch(decoded, lang="kan_Knda")[0]
+
+    # Store in cache
+    with _cache_lock:
+        _translation_cache[key] = result
+
+    return result
+
+
+def translate_words_batch(words: list[str]) -> list[str]:
+    """Translate a list of English words to Kannada efficiently.
+    Uses cache for already-seen words, batches new ones in a single GPU call.
+    Fix 2: sentence-level batch translation.
+    """
+    import torch
+    results = [""] * len(words)
+    to_translate = []   # (original_index, word)
+
+    with _cache_lock:
+        for i, word in enumerate(words):
+            key = word.strip().lower()
+            if key in _translation_cache:
+                results[i] = _translation_cache[key]
+            else:
+                to_translate.append((i, word))
+
+    if not to_translate:
+        return results   # all cached
+
+    model, tokenizer, ip, device = get_translator()
+    batch_words = [w for _, w in to_translate]
+    batch = ip.preprocess_batch(batch_words, src_lang="eng_Latn", tgt_lang="kan_Knda")
+    inputs = tokenizer(batch, return_tensors="pt", truncation=True,
+                       padding="longest").to(device)
+    with torch.no_grad():
+        out = model.generate(**inputs, max_new_tokens=64, num_beams=5,
+                             repetition_penalty=1.3, no_repeat_ngram_size=3)
+    decoded = tokenizer.batch_decode(out, skip_special_tokens=True,
+                                     clean_up_tokenization_spaces=True)
+    translations = ip.postprocess_batch(decoded, lang="kan_Knda")
+
+    with _cache_lock:
+        for (i, word), translation in zip(to_translate, translations):
+            key = word.strip().lower()
+            _translation_cache[key] = translation
+            results[i] = translation
+
+    return results
 
 
 def synthesize_wav(text: str, voice: str = DEFAULT_VOICE) -> bytes:
@@ -252,6 +370,8 @@ async def lifespan(app: FastAPI):
     await loop.run_in_executor(None, get_classifier)
     await loop.run_in_executor(None, _init_mediapipe)
     print("▶ Preloading TTS...", flush=True)
+    await loop.run_in_executor(None, get_fast_tts)   # mms — fast, always preloaded
+    await loop.run_in_executor(None, get_tts)         # parler — quality sentences
     await loop.run_in_executor(None, get_tts)
     print("✓ All models ready — server is live", flush=True)
     yield
@@ -269,9 +389,13 @@ class PredictRequest(BaseModel):
 class TranslateRequest(BaseModel):
     text: str
 
+class TranslateBatchRequest(BaseModel):
+    words: List[str]   # list of English words to translate in one call
+
 class TTSRequest(BaseModel):
     text: str
     voice: Optional[str] = DEFAULT_VOICE
+    fast: Optional[bool] = False   # True = mms (instant), False = parler (quality)
 
 
 # ── API routes ────────────────────────────────────────────────────────────────
@@ -366,15 +490,32 @@ async def api_translate(req: TranslateRequest):
     return {"translation": translation}
 
 
+@app.post("/api/translate_batch")
+async def api_translate_batch(req: TranslateBatchRequest):
+    """Translate multiple words in one GPU call. Cache-aware.
+    Fix 2: used by Speak Sentence to translate full sentence efficiently.
+    """
+    if not req.words:
+        raise HTTPException(400, "No words provided")
+    loop   = asyncio.get_event_loop()
+    results = await loop.run_in_executor(None, translate_words_batch, req.words)
+    return {
+        "translations": results,
+        "pairs": [{"word": w, "translation": t} for w, t in zip(req.words, results)],
+    }
+
+
 @app.post("/api/tts")
 async def api_tts(req: TTSRequest):
     if not req.text:
         raise HTTPException(400, "No text provided")
-    loop      = asyncio.get_event_loop()
+    loop = asyncio.get_event_loop()
+    # fast=True → mms (<0.5s) for single word Speak button
+    # fast=False → parler (3-6s, quality) for full Speak Sentence
     wav_bytes = await loop.run_in_executor(
-        None, synthesize_wav, req.text, req.voice or DEFAULT_VOICE)
+        None, synthesize_wav, req.text, req.voice or DEFAULT_VOICE, req.fast or False)
     b64 = base64.b64encode(wav_bytes).decode()
-    return {"audio_b64": b64, "format": "wav"}
+    return {"audio_b64": b64, "format": "wav", "fast": req.fast}
 
 
 @app.get("/sample/{folder}/{filename}")

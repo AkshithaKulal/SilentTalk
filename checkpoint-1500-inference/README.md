@@ -1,5 +1,5 @@
 ---
-base_model: C:\Sarastra\SilentTalk\IndicTrans2\huggingface_interface\model_cache\indictrans2-en-indic-1B
+base_model: ./model_cache/indictrans2-en-indic-1B
 library_name: peft
 ---
 
