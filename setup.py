@@ -39,7 +39,7 @@ sys.stdout.reconfigure(encoding='utf-8', errors='replace') if hasattr(sys.stdout
 
 ROOT    = Path(__file__).resolve().parent
 IS_WIN  = platform.system() == "Windows"
-VENV    = ROOT / ".venv"
+VENV    = ROOT / "silent-venv"
 PY_VENV = VENV / ("Scripts" if IS_WIN else "bin") / ("python.exe" if IS_WIN else "python")
 PIP     = [str(PY_VENV), "-m", "pip"]
 
@@ -86,7 +86,14 @@ else:
     ok(".venv created")
 
 if not PY_VENV.exists():
-    fail(f"Python not found in venv at {PY_VENV}")
+    # fallback: if .venv exists from previous setup, use it
+    fallback = ROOT / ".venv" / ("Scripts" if IS_WIN else "bin") / ("python.exe" if IS_WIN else "python")
+    if fallback.exists():
+        warn("silent-venv not found but .venv exists — using .venv")
+        globals()['PY_VENV'] = fallback
+        globals()['PIP'] = [str(fallback), "-m", "pip"]
+    else:
+        fail(f"Python not found in venv at {PY_VENV}")
 ok(f"Venv Python: {PY_VENV}")
 
 # ── Step 3: Upgrade pip ───────────────────────────────────────────────────────
