@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import Header from './components/Header'
 import SignSelector from './components/SignSelector'
 import WebcamCapture from './components/WebcamCapture'
@@ -13,8 +13,17 @@ export default function App() {
   const [sentence, setSentence]           = useState([])   // [{word, conf, translation, id}]
   const [history, setHistory]             = useState([])   // past spoken sentences
   const [isSpeaking, setIsSpeaking]       = useState(false)
-  const [speakingTarget, setSpeakingTarget] = useState(null) // 'word' | 'sentence'
+  const [speakingTarget, setSpeakingTarget] = useState(null)
+  const [selectedVoice, setSelectedVoice] = useState('female_clear')
+  const [voices, setVoices]               = useState([])
   const status = useSystemStatus()
+
+  // Load available voices on mount
+  useEffect(() => {
+    fetch('/api/voices').then(r => r.json()).then(d => {
+      if (d.voices) setVoices(d.voices)
+    }).catch(() => {})
+  }, [])
 
   // ── Called by WebcamCapture after every successful /api/predict ────────────
   const onPrediction = useCallback((data) => {
@@ -55,7 +64,7 @@ export default function App() {
     const res = await fetch('/api/tts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text })
+      body: JSON.stringify({ text, voice: selectedVoice })
     })
     const data = await res.json()
     if (!data.audio_b64) throw new Error('No audio returned')
@@ -80,7 +89,15 @@ export default function App() {
     setIsSpeaking(false); setSpeakingTarget(null)
   }
 
-  // ── Speak the full sentence queue ──────────────────────────────────────────
+  // ── Replay a sentence from history ───────────────────────────────────────
+  const onReplayHistory = async (kannada) => {
+    if (!kannada || isSpeaking) return
+    setIsSpeaking(true); setSpeakingTarget('replay')
+    try { await playTTS(kannada) } catch { /* silent */ }
+    setIsSpeaking(false); setSpeakingTarget(null)
+  }
+
+
   const onSpeakSentence = async () => {
     if (!sentence.length || isSpeaking) return
     const fullText = sentence.map(w => w.translation).join(' ')
@@ -88,7 +105,6 @@ export default function App() {
     setIsSpeaking(true); setSpeakingTarget('sentence')
     try {
       await playTTS(fullText)
-      // Log to history as a complete sentence
       setHistory(prev => [
         {
           sentence: englishText,
@@ -98,40 +114,58 @@ export default function App() {
         },
         ...prev.slice(0, 9)
       ])
+      // Auto-clear after speaking so user can start next sentence
+      setSentence([])
     } catch { /* silent */ }
     setIsSpeaking(false); setSpeakingTarget(null)
   }
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: '#060912' }}>
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: '#e8edf3' }}>
       <Header status={status} />
       <main style={{
         flex: 1,
         display: 'grid',
-        gridTemplateColumns: 'repeat(3, 1fr)',
+        gridTemplateColumns: '300px 1fr 340px',
         gap: 16,
         padding: 16,
         maxWidth: 1600,
         margin: '0 auto',
         width: '100%',
         alignItems: 'start',
+        minHeight: 0,
       }}>
-        <SignSelector onSelect={setSelectedSign} selected={selectedSign} />
-        <WebcamCapture selectedSign={selectedSign} onPrediction={onPrediction} />
-        <PredictionPanel
-          prediction={prediction}
-          translation={translation}
-          translating={translating}
-          sentence={sentence}
-          history={history}
-          isSpeaking={isSpeaking}
-          speakingTarget={speakingTarget}
-          onSpeakWord={onSpeakWord}
-          onSpeakSentence={onSpeakSentence}
-          onAddToSentence={addToSentence}
-          onRemoveFromSentence={removeFromSentence}
-          onClearSentence={clearSentence}
-        />
+        {/* Left col — scrollable independently */}
+        <div style={{ minHeight: 0, position: 'sticky', top: 76, maxHeight: 'calc(100vh - 92px)', overflowY: 'auto' }}>
+          <SignSelector onSelect={setSelectedSign} selected={selectedSign} />
+        </div>
+
+        {/* Center col */}
+        <div style={{ minHeight: 0 }}>
+          <WebcamCapture selectedSign={selectedSign} onPrediction={onPrediction} />
+        </div>
+
+        {/* Right col — scrollable independently */}
+        <div style={{ minHeight: 0, position: 'sticky', top: 76, maxHeight: 'calc(100vh - 92px)', overflowY: 'auto' }}>
+          <PredictionPanel
+            prediction={prediction}
+            translation={translation}
+            translating={translating}
+            sentence={sentence}
+            history={history}
+            isSpeaking={isSpeaking}
+            speakingTarget={speakingTarget}
+            voices={voices}
+            selectedVoice={selectedVoice}
+            onVoiceChange={setSelectedVoice}
+            onSpeakWord={onSpeakWord}
+            onSpeakSentence={onSpeakSentence}
+            onReplayHistory={onReplayHistory}
+            onAddToSentence={addToSentence}
+            onRemoveFromSentence={removeFromSentence}
+            onClearSentence={clearSentence}
+          />
+        </div>
       </main>
     </div>
   )

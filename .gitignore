@@ -71,6 +71,10 @@ Thumbs.db
 .idea/
 .vscode/
 
+# ── Secrets — never commit ────────────────────────────────────────────────────
+.env
+*.env
+
 # ── Nested git metadata ───────────────────────────────────────────────────────
 IndicTrans2/huggingface_interface/IndicTransToolkit_repo/.git/
 

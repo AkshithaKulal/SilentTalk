@@ -1,3 +1,4 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Noto+Sans+Kannada:wght@400;600;700;800&display=swap');
 @import "tailwindcss";
 
 @theme {
@@ -5,31 +6,52 @@
 }
 
 :root {
-  --bg-base:    #060912;
-  --bg-card:    #0d1117;
-  --bg-card2:   #111827;
-  --bg-hover:   #161d2e;
-  --border:     rgba(255,255,255,0.06);
-  --border-accent: rgba(99,102,241,0.3);
-  --indigo:     #6366f1;
-  --indigo-dim: #4338ca;
-  --teal:       #14b8a6;
-  --amber:      #f59e0b;
-  --green:      #22c55e;
-  --red:        #ef4444;
-  --text-1:     #f1f5f9;
-  --text-2:     #94a3b8;
-  --text-3:     #475569;
+  /* ── New theme: light/white with teal-emerald accents ── */
+  --bg-base:       #f0f4f8;
+  --bg-page:       #e8edf3;
+  --bg-card:       #ffffff;
+  --bg-card2:      #f8fafc;
+  --bg-hover:      #f1f5f9;
+  --border:        #e2e8f0;
+  --border-strong: #cbd5e1;
+
+  /* Accent: teal-emerald */
+  --teal:          #0d9488;
+  --teal-light:    #14b8a6;
+  --teal-dim:      #0f766e;
+  --teal-bg:       rgba(13,148,136,0.08);
+  --teal-border:   rgba(13,148,136,0.25);
+
+  /* Confidence colors */
+  --green:         #059669;
+  --green-bg:      rgba(5,150,105,0.08);
+  --amber:         #d97706;
+  --amber-bg:      rgba(217,119,6,0.08);
+  --red:           #dc2626;
+  --red-bg:        rgba(220,38,38,0.08);
+
+  /* Text */
+  --text-1:        #0f172a;
+  --text-2:        #334155;
+  --text-3:        #64748b;
+  --text-4:        #94a3b8;
+
+  /* Shadows */
+  --shadow-sm:     0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-md:     0 4px 12px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04);
+  --shadow-lg:     0 8px 24px rgba(0,0,0,0.1), 0 4px 8px rgba(0,0,0,0.04);
+  --shadow-teal:   0 4px 20px rgba(13,148,136,0.2);
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 html, body {
   font-family: 'Inter', system-ui, sans-serif;
-  background: var(--bg-base);
+  background: var(--bg-page);
   color: var(--text-1);
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 .kannada {
@@ -39,40 +61,24 @@ html, body {
 /* Scrollbar */
 ::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 
-/* Card base */
+/* Card */
 .card {
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: 16px;
+  box-shadow: var(--shadow-sm);
 }
 
-/* Gradient text */
-.grad-text {
-  background: linear-gradient(135deg, #818cf8, #6366f1, #4f46e5);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-/* Glowing border */
-.glow-border {
-  border-color: rgba(99,102,241,0.4);
-  box-shadow: 0 0 0 1px rgba(99,102,241,0.15), 0 0 20px rgba(99,102,241,0.08);
-}
-
-/* Spinner animation — used by Loader2 inline style */
+/* Spinner */
 @keyframes spin {
   from { transform: rotate(0deg); }
   to   { transform: rotate(360deg); }
 }
 
-/* Sign category colors */
-.cat-greeting  { --cat: #6366f1; }
-.cat-pronoun   { --cat: #14b8a6; }
-.cat-people    { --cat: #f59e0b; }
-.cat-place     { --cat: #22c55e; }
-.cat-time      { --cat: #f472b6; }
-.cat-default   { --cat: #6366f1; }
+@keyframes pulse-ring {
+  0%   { transform: scale(1); opacity: 1; }
+  100% { transform: scale(1.4); opacity: 0; }
+}
