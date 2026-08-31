@@ -65,6 +65,9 @@ except Exception:
 # ── model state ───────────────────────────────────────────────────────────────
 _classifier      = None
 _label_enc       = None
+_seq_model       = None
+_seq_classes     = None
+_seq_device      = None
 _translator      = None
 _tts_model       = None
 _tts_tokenizer   = None
@@ -90,6 +93,22 @@ DEFAULT_VOICE = "female_clear"
 
 
 # ── model loaders ─────────────────────────────────────────────────────────────
+def sequence_model_path() -> Path:
+    return ARTIFACTS / "sign_bilstm.pt"
+
+
+def get_sequence_model():
+    """New INCLUDE BiLSTM (263-class after full train). None until that file exists."""
+    global _seq_model, _seq_classes, _seq_device
+    path = sequence_model_path()
+    if not path.exists():
+        return None
+    if _seq_model is None:
+        from sequence_model import load_bundle
+        _seq_model, _seq_classes, _seq_device = load_bundle(path)
+    return _seq_model, _seq_classes, _seq_device
+
+
 def get_classifier():
     global _classifier, _label_enc
     if _classifier is None:
@@ -244,7 +263,6 @@ def _init_mediapipe():
 def predict_frame_sequence(frames_bgr: list) -> list[tuple[str, float]]:
     import mediapipe as mp
     from extract_landmarks import frame_feature
-    from train_classifier import sequence_to_features
 
     _init_mediapipe()
 
@@ -261,7 +279,15 @@ def predict_frame_sequence(frames_bgr: list) -> list[tuple[str, float]]:
     if not feats:
         return []
 
-    x = sequence_to_features(np.stack(feats)).reshape(1, -1)
+    seq = np.stack(feats)
+    bundle = get_sequence_model()
+    if bundle is not None:
+        from sequence_model import predict_topk
+        model, classes, device = bundle
+        return predict_topk(model, classes, seq, device, k=5)
+
+    from train_classifier import sequence_to_features
+    x = sequence_to_features(seq).reshape(1, -1)
     clf, le = get_classifier()
     proba = clf.predict_proba(x)[0]
     idx = np.argsort(proba)[::-1][:5]
@@ -337,43 +363,19 @@ def translate_words_batch(words: list[str]) -> list[str]:
     return results
 
 
-def synthesize_wav(text: str, voice: str = DEFAULT_VOICE) -> bytes:
-    import torch, scipy.io.wavfile
-    model, tokenizer = get_tts()
-    device = next(model.parameters()).device
-    tts_type = getattr(model, "_tts_type", "mms")
-
-    if tts_type == "parler":
-        desc       = VOICE_PRESETS.get(voice, VOICE_PRESETS[DEFAULT_VOICE])
-        input_ids  = tokenizer(desc, return_tensors="pt").input_ids.to(device)
-        prompt_ids = tokenizer(text, return_tensors="pt").input_ids.to(device)
-        with torch.no_grad():
-            gen = model.generate(input_ids=input_ids, prompt_input_ids=prompt_ids)
-        audio = gen.cpu().numpy().squeeze().astype(np.float32)
-    else:
-        inputs = {k: v.to(device) for k, v in tokenizer(text, return_tensors="pt").items()}
-        with torch.no_grad():
-            audio = model(**inputs).waveform.squeeze().cpu().numpy().astype(np.float32)
-
-    sample_rate = model.config.sampling_rate
-    audio_i16   = (audio / max(np.abs(audio).max(), 1e-6) * 32767).astype(np.int16)
-    buf = io.BytesIO()
-    scipy.io.wavfile.write(buf, sample_rate, audio_i16)
-    return buf.getvalue()
-
-
 # ── lifespan: preload fast models at startup ──────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     loop = asyncio.get_event_loop()
     print("▶ Preloading classifier + MediaPipe...", flush=True)
-    await loop.run_in_executor(None, get_classifier)
+    if sequence_model_path().exists():
+        await loop.run_in_executor(None, get_sequence_model)
+    elif (ARTIFACTS / "sign_classifier.joblib").exists():
+        await loop.run_in_executor(None, get_classifier)
     await loop.run_in_executor(None, _init_mediapipe)
     print("▶ Preloading TTS...", flush=True)
-    await loop.run_in_executor(None, get_fast_tts)   # mms — fast, always preloaded
-    await loop.run_in_executor(None, get_tts)         # parler — quality sentences
-    await loop.run_in_executor(None, get_tts)
-    print("✓ All models ready — server is live", flush=True)
+    await loop.run_in_executor(None, get_fast_tts)   # mms — used for live Speak
+    print("✓ Fast models ready — server is live", flush=True)
     yield
     # shutdown: nothing to clean up
 
@@ -401,7 +403,7 @@ class TTSRequest(BaseModel):
 # ── API routes ────────────────────────────────────────────────────────────────
 @app.get("/api/status")
 async def api_status():
-    clf_ok  = (ARTIFACTS / "sign_classifier.joblib").exists()
+    clf_ok  = sequence_model_path().exists() or (ARTIFACTS / "sign_classifier.joblib").exists()
     lora_ok = (_LOCAL_LORA / "adapter_model.safetensors").exists() or \
               (_DOWNLOADED_LORA / "adapter_model.safetensors").exists()
     model_ok = _LOCAL_BASE.exists() or True   # HF Hub fallback always available
@@ -461,8 +463,13 @@ async def api_predict(req: PredictRequest):
         raw   = base64.b64decode(b64.split(",")[-1])
         arr   = np.frombuffer(raw, np.uint8)
         frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-        if frame is not None:
-            frames_bgr.append(frame)
+        if frame is None:
+            continue
+        h, w = frame.shape[:2]
+        if w > 320:
+            scale = 320.0 / w
+            frame = cv2.resize(frame, (320, max(1, int(h * scale))), interpolation=cv2.INTER_AREA)
+        frames_bgr.append(frame)
 
     if not frames_bgr:
         raise HTTPException(400, "Could not decode frames")

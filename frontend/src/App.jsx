@@ -2,10 +2,12 @@ import { useState, useCallback, useRef, useEffect } from 'react'
 import Header from './components/Header'
 import SignSelector from './components/SignSelector'
 import WebcamCapture from './components/WebcamCapture'
-import PredictionPanel from './components/PredictionPanel'
+import MessageBar from './components/MessageBar'
+import LiveRail from './components/LiveRail'
 import { useSystemStatus } from './hooks/useSystemStatus'
 
 export default function App() {
+  const [libraryOpen, setLibraryOpen]       = useState(false)
   const [selectedSign, setSelectedSign]     = useState(null)
   const [prediction, setPrediction]         = useState(null)
   const [translation, setTranslation]       = useState('')
@@ -17,6 +19,13 @@ export default function App() {
   const [selectedVoice, setSelectedVoice]   = useState('female_clear')
   const [voices, setVoices]                 = useState([])
   const status = useSystemStatus()
+
+  // Auto-commit: same gloss must stay confident across live windows, then
+  // it is appended — no "Add to Sentence" click. Cooldown stops duplicates.
+  const pendingRef = useRef({ label: null, count: 0 })
+  const lastCommitRef = useRef({ label: null, t: 0 })
+  const AUTO_CONF = 60
+  const SAME_WORD_COOLDOWN_MS = 2800
 
   // ── Client-side translation cache (Fix 3) ─────────────────────────────────
   // Word → Kannada translation. Avoids even the HTTP call for repeated words.
@@ -48,29 +57,50 @@ export default function App() {
     return word   // fallback to English if translation fails
   }, [])
 
-  // ── FIX 1: onPrediction no longer auto-translates ─────────────────────────
-  // Translation ONLY happens when the user explicitly adds the word to sentence
-  // or clicks Speak. This stops the GPU from being hammered on every live frame.
-  const onPrediction = useCallback((data) => {
-    setPrediction(data)
-    setTranslation('')
-    setTranslating(false)
-  }, [])
-
-  // ── Add to sentence: translate on demand (Fix 1 + Fix 3) ─────────────────
+  // Append immediately (English chip). Kannada fills in without blocking Speak.
   const addToSentence = useCallback(async (word, conf) => {
+    const id = Date.now() + Math.random()
+    const key = word.toLowerCase().trim()
+    const cached = translationCache.current[key] || ''
+    setSentence(prev => [...prev, { id, word, conf, translation: cached }])
+    if (cached) {
+      setTranslation(cached)
+      return
+    }
     setTranslating(true)
     try {
       const trans = await translateWord(word)
-      setTranslation(trans)   // show in prediction panel
-      setSentence(prev => [
-        ...prev,
-        { id: Date.now(), word, conf, translation: trans }
-      ])
+      setTranslation(trans)
+      setSentence(prev => prev.map(w => w.id === id ? { ...w, translation: trans } : w))
     } finally {
       setTranslating(false)
     }
   }, [translateWord])
+
+  // Live predictions auto-commit. Translation still only on add/Speak, not every frame.
+  const onPrediction = useCallback((data) => {
+    setPrediction(data)
+    const conf = data?.top_conf ?? 0
+    const label = (data?.top_label || '').trim()
+    if (!label || conf < AUTO_CONF) {
+      pendingRef.current = { label: null, count: 0 }
+      return
+    }
+    if (pendingRef.current.label === label) {
+      pendingRef.current.count += 1
+    } else {
+      pendingRef.current = { label, count: 1 }
+    }
+    const needStreak = conf >= 75 ? 1 : 2
+    const now = Date.now()
+    const sameAsLast = lastCommitRef.current.label === label
+    const tooSoon = now - lastCommitRef.current.t < SAME_WORD_COOLDOWN_MS
+    if (pendingRef.current.count >= needStreak && !(sameAsLast && tooSoon)) {
+      lastCommitRef.current = { label, t: now }
+      pendingRef.current = { label, count: 0 }
+      addToSentence(label, conf)
+    }
+  }, [addToSentence])
 
   const removeFromSentence = useCallback((id) => {
     setSentence(prev => prev.filter(w => w.id !== id))
@@ -128,7 +158,7 @@ export default function App() {
       // Update sentence state with fresh translations
       setSentence(updatedSentence)
 
-      await playTTS(fullKannada, false)   // fast=false → parler quality for sentences
+      await playTTS(fullKannada, true)   // mms — sentence speak must stay instant
 
       setHistory(prev => [
         {
@@ -176,49 +206,42 @@ export default function App() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: '#e8edf3' }}>
-      <Header status={status} />
-      <main style={{
-        flex: 1,
-        display: 'grid',
-        gridTemplateColumns: '300px 1fr 340px',
-        gap: 16,
-        padding: 16,
-        maxWidth: 1600,
-        margin: '0 auto',
-        width: '100%',
-        alignItems: 'start',
-        minHeight: 0,
-      }}>
-        <div style={{ minHeight: 0, position: 'sticky', top: 76, maxHeight: 'calc(100vh - 92px)', overflowY: 'auto' }}>
-          <SignSelector onSelect={setSelectedSign} selected={selectedSign} />
-        </div>
-
-        <div style={{ minHeight: 0 }}>
-          <WebcamCapture selectedSign={selectedSign} onPrediction={onPrediction} />
-        </div>
-
-        <div style={{ minHeight: 0, position: 'sticky', top: 76, maxHeight: 'calc(100vh - 92px)', overflowY: 'auto' }}>
-          <PredictionPanel
-            prediction={prediction}
-            translation={translation}
-            translating={translating}
-            sentence={sentence}
-            history={history}
-            isSpeaking={isSpeaking}
-            speakingTarget={speakingTarget}
-            voices={voices}
-            selectedVoice={selectedVoice}
-            onVoiceChange={setSelectedVoice}
-            onSpeakWord={onSpeakWord}
-            onSpeakSentence={onSpeakSentence}
-            onReplayHistory={onReplayHistory}
-            onAddToSentence={addToSentence}
-            onRemoveFromSentence={removeFromSentence}
-            onClearSentence={clearSentence}
-          />
-        </div>
+    <div className="app-shell">
+      <Header
+        status={status}
+        libraryOpen={libraryOpen}
+        onToggleLibrary={() => setLibraryOpen((v) => !v)}
+      />
+      <MessageBar
+        sentence={sentence}
+        isSpeaking={speakingTarget === 'sentence' && isSpeaking}
+        onSpeak={onSpeakSentence}
+        onClear={clearSentence}
+        onRemove={removeFromSentence}
+      />
+      <main className="workspace">
+        <WebcamCapture selectedSign={selectedSign} onPrediction={onPrediction} />
+        <LiveRail
+          prediction={prediction}
+          translation={translation}
+          translating={translating}
+          history={history}
+          isSpeaking={isSpeaking}
+          speakingTarget={speakingTarget}
+          voices={voices}
+          selectedVoice={selectedVoice}
+          onVoiceChange={setSelectedVoice}
+          onSpeakWord={onSpeakWord}
+          onReplayHistory={onReplayHistory}
+        />
       </main>
+      {libraryOpen && (
+        <SignSelector
+          onSelect={setSelectedSign}
+          selected={selectedSign}
+          onClose={() => setLibraryOpen(false)}
+        />
+      )}
     </div>
   )
 }

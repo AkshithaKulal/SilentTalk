@@ -1,0 +1,77 @@
+{
+  "name": "INCLUDE",
+  "full_name": "Indian Lexicon Sign Language Dataset",
+  "citation": "Sridhar, Ganesan, Kumar, Khapra. INCLUDE: A Large Scale Dataset for Indian Sign Language Recognition. ACM MM 2020.",
+  "license": "CC-BY-4.0",
+  "zenodo": "https://zenodo.org/records/4010759",
+  "github_code": "https://github.com/AI4Bharat/INCLUDE",
+  "hf_metadata": "https://huggingface.co/datasets/ai4bharat/INCLUDE",
+  "task": "isolated word-level Indian Sign Language recognition (one sign per video, not sentences)",
+  "recording": {
+    "place": "St. Louis School for the Deaf, Adyar, Chennai",
+    "signers": "deaf students; typically cited as 7 signers",
+    "repeats": "each word signed about 2-6 times",
+    "note": "Chennai ISL. ISL varies across India, so a different region's signs will not match."
+  },
+  "scale": {
+    "paper_videos": 4287,
+    "zenodo_videos": 4292,
+    "zenodo_note": "paper said 4287; 5 videos added later",
+    "word_signs": 263,
+    "categories": 15,
+    "frames": "~0.27 million",
+    "disk_gb": 56.8,
+    "zip_files": 44
+  },
+  "official_splits": {
+    "include_train": 3475,
+    "include_test": 817,
+    "include50_train": 766,
+    "include50_test": 192,
+    "ai4bharat_github_also_has_val": true,
+    "split_path_format": "Category/N. Word/MVI_xxxx.MOV",
+    "split_files": "https://github.com/AI4Bharat/INCLUDE/tree/master/train_test_paths"
+  },
+  "paper_accuracy": {
+    "include50": 0.945,
+    "include_263": 0.856,
+    "include50_no_aug": 0.74
+  },
+  "on_disk_layout": {
+    "zenodo_zip_example": "Greetings_1of2.zip",
+    "after_extract_example": "Greetings_1of2/Greetings/49. How are you/MVI_9920.MOV",
+    "official_split_example": "Greetings/49. How are you/MVI_9920.MOV",
+    "match_rule": "match splits by suffix Category/N. Word/filename, ignore the _1of2 zip-part prefix",
+    "extra_subfolder_trap": "some clips live in .../N. Word/Extra/clip.MOV — parent folder is Extra, not the word. Label must use the Word folder, not Extra."
+  },
+  "categories": [
+    {"name": "Adjectives", "zips": 8, "in_current_84_model": false},
+    {"name": "Animals", "zips": 2, "in_current_84_model": false},
+    {"name": "Clothes", "zips": 2, "in_current_84_model": false},
+    {"name": "Colours", "zips": 2, "in_current_84_model": false},
+    {"name": "Days_and_Time", "zips": 3, "in_current_84_model": true},
+    {"name": "Electronics", "zips": 2, "in_current_84_model": false},
+    {"name": "Greetings", "zips": 2, "in_current_84_model": true},
+    {"name": "Home", "zips": 4, "in_current_84_model": false},
+    {"name": "Jobs", "zips": 2, "in_current_84_model": false},
+    {"name": "Means_of_Transportation", "zips": 2, "in_current_84_model": false},
+    {"name": "People", "zips": 5, "in_current_84_model": true},
+    {"name": "Places", "zips": 4, "in_current_84_model": true},
+    {"name": "Pronouns", "zips": 2, "in_current_84_model": true},
+    {"name": "Seasons", "zips": 1, "in_current_84_model": false},
+    {"name": "Society", "zips": 3, "in_current_84_model": false}
+  ],
+  "current_silenttalk_model": {
+    "classes": 84,
+    "clips": 1568,
+    "categories_used": ["Greetings", "Days_and_Time", "People", "Places", "Pronouns"],
+    "fraction_of_include_classes": 0.32,
+    "fraction_of_include_videos": 0.37
+  },
+  "why_live_predictions_fail": [
+    "Current model only knows 84 of 263 words. Signing Dog, Teacher, Water, etc. cannot be correct.",
+    "INCLUDE is isolated one-sign clips from Chennai school students on a fixed camera. Webcam + different signer + different lighting is a different distribution.",
+    "The classifier averages all frames (mean/std/min/max). Signs are motion, so similar greetings/family signs collide.",
+    "The 98.7% train_report number is leakage (augment then split), not real accuracy."
+  ]
+}

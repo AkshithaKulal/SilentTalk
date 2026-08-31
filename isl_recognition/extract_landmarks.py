@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 import urllib.request
 from pathlib import Path
@@ -61,14 +62,20 @@ def find_videos(root: Path) -> list[Path]:
 
 
 def label_from_path(video: Path, input_root: Path) -> str:
-    """INCLUDE layout is usually .../<WordName>/<clip>.mp4 — use parent folder."""
+    """INCLUDE layout is .../<N. Word>/<clip> — never use Extra/ as the label."""
+    raw = video.parent.name
     try:
         rel = video.relative_to(input_root)
-        if len(rel.parts) >= 2:
-            return rel.parts[-2]
+        parts = rel.parts
+        if len(parts) >= 3 and parts[-2].strip().lower() == "extra":
+            raw = parts[-3]
+        elif len(parts) >= 2:
+            raw = parts[-2]
     except ValueError:
-        pass
-    return video.parent.name
+        if video.parent.name.strip().lower() == "extra":
+            raw = video.parent.parent.name
+    m = re.match(r"^\s*\d+\.\s*(.+)\s*$", raw.strip())
+    return (m.group(1) if m else raw).strip()
 
 
 def landmarks_to_xyz(landmarks, expected: int) -> np.ndarray:

@@ -1,6 +1,6 @@
 ﻿import { useRef } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { Volume2, Loader2, Clock, TrendingUp, Plus, X, PlayCircle, Trash2, MessageSquare, RotateCcw } from "lucide-react"
+import { Volume2, Loader2, Clock, TrendingUp, X, PlayCircle, Trash2, MessageSquare, RotateCcw } from "lucide-react"
 
 // ── Confidence helpers ────────────────────────────────────────────────────────
 const cc  = (c) => c >= 70 ? "#059669" : c >= 40 ? "#d97706" : "#dc2626"
@@ -46,15 +46,13 @@ export default function PredictionPanel({
   isSpeaking, speakingTarget,
   voices, selectedVoice, onVoiceChange,
   onSpeakWord, onSpeakSentence, onReplayHistory,
-  onAddToSentence, onRemoveFromSentence, onClearSentence,
+  onRemoveFromSentence, onClearSentence,
 }) {
   const predCountRef = useRef(0)
   if (prediction) predCountRef.current += 1
   const animKey = prediction ? `${prediction.top_label}-${predCountRef.current}` : "empty"
 
   const conf   = prediction?.top_conf ?? 0
-  // canAdd: only needs prediction + confidence — translation happens on click
-  const canAdd = !!prediction && conf >= 60 && !translating && !isSpeaking
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -117,7 +115,7 @@ export default function PredictionPanel({
                   background: 'rgba(13,148,136,0.06)', border: '1.5px dashed rgba(13,148,136,0.2)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26 }}>🤟</div>
                 <p style={{ fontSize: 13, color: '#94a3b8', textAlign: 'center', lineHeight: 1.5 }}>
-                  Perform a sign and capture<br />to see prediction here
+                  Perform a sign in Go Live<br />High-confidence words join the sentence automatically
                 </p>
               </motion.div>
             ) : (
@@ -174,13 +172,11 @@ export default function PredictionPanel({
                   )}
                 </AnimatePresence>
 
-                {/* Action buttons */}
-                <div style={{ display: 'flex', gap: 8 }}>
                   <motion.button onClick={onSpeakWord}
                     disabled={!prediction || isSpeaking}
                     whileHover={prediction && !isSpeaking ? { scale: 1.02 } : {}}
                     whileTap={prediction && !isSpeaking ? { scale: 0.97 } : {}}
-                    style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                    style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                       padding: '9px 0', borderRadius: 10,
                       background: '#f8fafc', border: '1px solid #e2e8f0',
                       color: !prediction || isSpeaking ? '#94a3b8' : '#334155',
@@ -190,38 +186,8 @@ export default function PredictionPanel({
                     {speakingTarget === 'word' && isSpeaking
                       ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} />
                       : <Volume2 size={12} />}
-                    {speakingTarget === 'word' && isSpeaking ? "Playing..." : "Speak"}
+                    {speakingTarget === 'word' && isSpeaking ? "Playing..." : "Preview this word"}
                   </motion.button>
-
-                  <motion.button
-                    onClick={() => canAdd && onAddToSentence(prediction.top_label, conf)}
-                    disabled={!canAdd}
-                    whileHover={canAdd ? { scale: 1.02 } : {}}
-                    whileTap={canAdd ? { scale: 0.97 } : {}}
-                    title={conf < 60 ? `Need ≥60% confidence (current: ${conf}%)` : 'Add to sentence'}
-                    style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                      padding: '9px 0', borderRadius: 10,
-                      background: canAdd ? 'linear-gradient(135deg, #0d9488, #059669)' : '#f8fafc',
-                      border: canAdd ? 'none' : '1px solid #e2e8f0',
-                      color: canAdd ? 'white' : '#94a3b8',
-                      fontSize: 12, fontWeight: 700,
-                      cursor: canAdd ? 'pointer' : 'not-allowed',
-                      boxShadow: canAdd ? '0 4px 12px rgba(13,148,136,0.25)' : 'none' }}>
-                    {translating
-                      ? <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} />
-                      : <Plus size={13} />}
-                    {translating ? 'Translating...' : 'Add to Sentence'}
-                  </motion.button>
-                </div>
-
-                {/* Low conf warning */}
-                {conf < 60 && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11,
-                    fontWeight: 500, color: '#92400e', padding: '7px 10px', borderRadius: 8,
-                    background: 'rgba(217,119,6,0.06)', border: '1px solid rgba(217,119,6,0.2)' }}>
-                    ⚠ Confidence {conf}% — redo the sign for a cleaner result before adding
-                  </div>
-                )}
 
                 {/* Top 5 */}
                 {prediction.top5 && (
@@ -294,7 +260,7 @@ export default function PredictionPanel({
               <div style={{ fontSize: 24, marginBottom: 6 }}>📝</div>
               <p style={{ fontSize: 13, fontWeight: 600, color: '#94a3b8' }}>No words yet</p>
               <p style={{ fontSize: 11, color: '#cbd5e1', marginTop: 4 }}>
-                Add words above (≥60% confidence required)
+                Go Live and sign. Words append on their own. Press Speak when ready.
               </p>
             </div>
           ) : (

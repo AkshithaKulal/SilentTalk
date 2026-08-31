@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Noto+Sans+Kannada:wght@400;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Kannada:wght@500;600;700&display=swap');
 @import "tailwindcss";
 
 @theme {
@@ -6,79 +6,109 @@
 }
 
 :root {
-  /* ── New theme: light/white with teal-emerald accents ── */
-  --bg-base:       #f0f4f8;
-  --bg-page:       #e8edf3;
-  --bg-card:       #ffffff;
-  --bg-card2:      #f8fafc;
-  --bg-hover:      #f1f5f9;
-  --border:        #e2e8f0;
-  --border-strong: #cbd5e1;
-
-  /* Accent: teal-emerald */
-  --teal:          #0d9488;
-  --teal-light:    #14b8a6;
-  --teal-dim:      #0f766e;
-  --teal-bg:       rgba(13,148,136,0.08);
-  --teal-border:   rgba(13,148,136,0.25);
-
-  /* Confidence colors */
-  --green:         #059669;
-  --green-bg:      rgba(5,150,105,0.08);
-  --amber:         #d97706;
-  --amber-bg:      rgba(217,119,6,0.08);
-  --red:           #dc2626;
-  --red-bg:        rgba(220,38,38,0.08);
-
-  /* Text */
-  --text-1:        #0f172a;
-  --text-2:        #334155;
-  --text-3:        #64748b;
-  --text-4:        #94a3b8;
-
-  /* Shadows */
-  --shadow-sm:     0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
-  --shadow-md:     0 4px 12px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04);
-  --shadow-lg:     0 8px 24px rgba(0,0,0,0.1), 0 4px 8px rgba(0,0,0,0.04);
-  --shadow-teal:   0 4px 20px rgba(13,148,136,0.2);
+  --bg: #f5f6f8;
+  --surface: #ffffff;
+  --ink: #111827;
+  --muted: #6b7280;
+  --faint: #9ca3af;
+  --line: #e5e7eb;
+  --line-strong: #d1d5db;
+  --accent: #1d4ed8;
+  --accent-hover: #1e40af;
+  --accent-soft: #eef2ff;
+  --accent-ink: #1e3a8a;
+  --live: #dc2626;
+  --ok: #047857;
+  --ok-soft: #ecfdf5;
+  --warn: #b45309;
+  --warn-soft: #fffbeb;
+  --bad: #b91c1c;
+  --bad-soft: #fef2f2;
+  --radius: 12px;
+  --radius-sm: 8px;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
-html, body {
-  font-family: 'Inter', system-ui, sans-serif;
-  background: var(--bg-page);
-  color: var(--text-1);
+html, body, #root {
   min-height: 100vh;
+  font-family: 'Inter', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
   -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+.btn-primary:disabled {
+  background: var(--line);
+  color: var(--faint);
+}
+button:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .kannada {
   font-family: 'Noto Sans Kannada', 'Inter', sans-serif;
 }
 
-/* Scrollbar */
-::-webkit-scrollbar { width: 4px; height: 4px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
-::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-
-/* Card */
-.card {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
+.message-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
   border-radius: 16px;
-  box-shadow: var(--shadow-sm);
+  padding: 16px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 16px;
+  align-items: stretch;
 }
 
-/* Spinner */
+.live-rail {
+  position: sticky;
+  top: 72px;
+}
+
+@media (max-width: 720px) {
+  .message-card {
+    grid-template-columns: 1fr;
+  }
+}
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 6px; }
+
 @keyframes spin {
   from { transform: rotate(0deg); }
-  to   { transform: rotate(360deg); }
+  to { transform: rotate(360deg); }
 }
 
-@keyframes pulse-ring {
-  0%   { transform: scale(1); opacity: 1; }
-  100% { transform: scale(1.4); opacity: 0; }
+.app-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+
+.workspace {
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) 320px;
+  gap: 16px;
+  padding: 0 20px 20px;
+  max-width: 1280px;
+  margin: 0 auto;
+  width: 100%;
+  align-items: start;
+}
+
+@media (max-width: 960px) {
+  .workspace {
+    grid-template-columns: 1fr;
+  }
+  .live-rail {
+    position: static;
+  }
 }
