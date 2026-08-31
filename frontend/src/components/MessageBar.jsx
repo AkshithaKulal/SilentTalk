@@ -10,7 +10,8 @@ export default function MessageBar({
   onRemove,
   onUndo,
   canSpeak = false,
-  speakHint = "Sign first, then tap Speak",
+  speakHint = "Hold a sign steady — Kannada speaks automatically",
+  speakLabel = "Replay",
 }) {
   const english = sentence.map((w) => w.word).join(" · ")
   const kannada = sentence.map((w) => w.translation).filter(Boolean).join(" ")
@@ -109,7 +110,7 @@ export default function MessageBar({
                 {speakingName || "Speaking"}
               </>
             ) : (
-              <><Volume2 size={20} /> Speak</>
+              <><Volume2 size={20} /> {speakLabel}</>
             )}
           </motion.button>
           {!empty && (

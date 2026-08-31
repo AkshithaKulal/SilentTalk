@@ -1,6 +1,6 @@
 ﻿import { useState, useRef, useEffect, useCallback } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { Camera, Square, Loader2, Zap, Radio, Volume2 } from "lucide-react"
+import { Camera, Square, Loader2, Zap, Radio } from "lucide-react"
 
 const LIVE_CAPTURE_FRAMES   = 18
 const MANUAL_CAPTURE_FRAMES = 24
@@ -9,7 +9,7 @@ const LIVE_GAP_MS           = 280
 const FRAME_W               = 480
 const FRAME_H               = 360
 
-export default function WebcamCapture({ selectedSign, onPrediction, onSpeakNow, canSpeakNow, isSpeaking }) {
+export default function WebcamCapture({ selectedSign, onPrediction, isSpeaking }) {
   const videoRef        = useRef(null)
   const canvasRef       = useRef(null)
   const onPredictionRef = useRef(onPrediction)
@@ -392,14 +392,13 @@ export default function WebcamCapture({ selectedSign, onPrediction, onSpeakNow, 
                   >
                     {livePred.idle
                       ? (livePred.reason || "Sign in front of the camera")
-                      : `${livePred.conf}% · ${livePred.conf >= 58 ? "joining" : "hold sign"}`}
+                      : isSpeaking
+                        ? "Speaking Kannada…"
+                        : `${livePred.conf}% · ${livePred.conf >= 58 ? "detected" : "hold sign"}`}
                   </div>
                 </div>
-                {liveMode && !livePred.idle && <span className="cam-pred-live">LIVE</span>}
-                {canSpeakNow && onSpeakNow && (
-                  <button type="button" className="cam-speak-now" onClick={onSpeakNow} disabled={isSpeaking}>
-                    <Volume2 size={14} /> Speak
-                  </button>
+                {liveMode && !livePred.idle && (
+                  <span className="cam-pred-live">{isSpeaking ? "SPEAK" : "LIVE"}</span>
                 )}
               </motion.div>
             )}
