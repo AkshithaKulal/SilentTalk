@@ -7,6 +7,7 @@ venv/
 silent-venv/
 .env
 *.log
+certs/
 
 # ── Node / frontend ───────────────────────────────────────────────────────────
 node_modules/

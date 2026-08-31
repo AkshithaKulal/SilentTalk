@@ -1,6 +1,6 @@
 ﻿import { useState, useRef, useEffect, useCallback } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { Camera, Square, Loader2, Zap, Radio } from "lucide-react"
+import { Camera, Square, Loader2, Zap, Radio, Volume2 } from "lucide-react"
 
 const LIVE_CAPTURE_FRAMES   = 18
 const MANUAL_CAPTURE_FRAMES = 24
@@ -9,7 +9,7 @@ const LIVE_GAP_MS           = 280
 const FRAME_W               = 480
 const FRAME_H               = 360
 
-export default function WebcamCapture({ selectedSign, onPrediction }) {
+export default function WebcamCapture({ selectedSign, onPrediction, onSpeakNow, canSpeakNow, isSpeaking }) {
   const videoRef        = useRef(null)
   const canvasRef       = useRef(null)
   const onPredictionRef = useRef(onPrediction)
@@ -47,9 +47,26 @@ export default function WebcamCapture({ selectedSign, onPrediction }) {
     ctx.setLineDash([])
 
     ctx.font = "600 11px Inter, system-ui, sans-serif"
-    ctx.fillStyle = "rgba(255,255,255,0.5)"
-    ctx.fillText("Head · torso · hands in frame", padX + 8, padTop + 16)
+    ctx.fillStyle = "rgba(255,255,255,0.45)"
+    ctx.fillText("Guide only — sign naturally", padX + 8, padTop + 16)
   }, [stream, liveMode])
+
+  // Keep video element attached to the MediaStream (fixes black / dead camera)
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video || !stream) return
+    if (video.srcObject !== stream) {
+      video.srcObject = stream
+    }
+    const play = async () => {
+      try {
+        await video.play()
+      } catch (e) {
+        setError("Camera started but video could not play: " + (e?.message || e))
+      }
+    }
+    play()
+  }, [stream])
 
   // ── collectFrames ─────────────────────────────────────────────────────────
   const collectFrames = useCallback((frameCount = MANUAL_CAPTURE_FRAMES, collectMs = LIVE_COLLECT_MS) => {
@@ -147,19 +164,50 @@ export default function WebcamCapture({ selectedSign, onPrediction }) {
 
   const startCamera = async () => {
     setError("")
-    try {
-      const s = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: "user",
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-        },
-        audio: false,
-      })
-      setStream(s)
-      if (videoRef.current) videoRef.current.srcObject = s
-      setLiveMode(true)
-    } catch (e) { setError("Camera access denied: " + e.message) }
+    const insecureLan =
+      typeof window !== "undefined" &&
+      !window.isSecureContext &&
+      !/^localhost$|^127\.0\.0\.1$/.test(window.location.hostname)
+
+    if (insecureLan || !navigator.mediaDevices?.getUserMedia) {
+      setError(
+        "Phone camera needs HTTPS. On the laptop run: python app.py --https  then open https://192.168.1.10:5000 and tap Advanced → Proceed."
+      )
+      return
+    }
+    // Close any previous stream first
+    stream?.getTracks().forEach((t) => t.stop())
+
+    const attempts = [
+      { video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
+      { video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } }, audio: false },
+      { video: { facingMode: "environment" }, audio: false },
+      { video: true, audio: false },
+    ]
+
+    let lastErr = null
+    for (const constraints of attempts) {
+      try {
+        const s = await navigator.mediaDevices.getUserMedia(constraints)
+        setStream(s)
+        setLiveMode(true)
+        return
+      } catch (e) {
+        lastErr = e
+      }
+    }
+
+    const name = lastErr?.name || "Error"
+    const msg = lastErr?.message || String(lastErr)
+    if (name === "NotAllowedError" || name === "PermissionDeniedError") {
+      setError("Camera blocked — allow camera permission for this site, then Start live again.")
+    } else if (name === "NotFoundError" || name === "DevicesNotFoundError") {
+      setError("No camera found on this device.")
+    } else if (name === "NotReadableError" || name === "TrackStartError") {
+      setError("Camera is busy — close other apps using the camera, then try again.")
+    } else {
+      setError(`Camera failed (${name}): ${msg}`)
+    }
   }
 
   const stopCamera = () => {
@@ -343,11 +391,16 @@ export default function WebcamCapture({ selectedSign, onPrediction }) {
                     }}
                   >
                     {livePred.idle
-                      ? (livePred.reason || "Step back — head, torso, hands in frame")
-                      : `${livePred.conf}% · ${livePred.conf >= 72 ? "joining" : "hold sign"}`}
+                      ? (livePred.reason || "Sign in front of the camera")
+                      : `${livePred.conf}% · ${livePred.conf >= 58 ? "joining" : "hold sign"}`}
                   </div>
                 </div>
                 {liveMode && !livePred.idle && <span className="cam-pred-live">LIVE</span>}
+                {canSpeakNow && onSpeakNow && (
+                  <button type="button" className="cam-speak-now" onClick={onSpeakNow} disabled={isSpeaking}>
+                    <Volume2 size={14} /> Speak
+                  </button>
+                )}
               </motion.div>
             )}
           </AnimatePresence>

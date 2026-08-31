@@ -79,9 +79,14 @@ _seq_device      = None
 _translator      = None
 _tts_model       = None
 _tts_tokenizer   = None
+_parler_ok       = False
 _pose_landmarker = None
 _hand_landmarker = None
 _predict_lock    = threading.Lock()   # MediaPipe is not thread-safe
+
+# ── Fast TTS — mms-tts-kan ────────────────────────────────────────────────────
+_fast_tts_model     = None
+_fast_tts_tokenizer = None
 
 # ── translation cache (Fix 3) ─────────────────────────────────────────────────
 # Avoids hitting the 2-4s GPU model for words already translated this session.
@@ -159,37 +164,42 @@ def get_translator():
 
 
 def get_tts():
-    global _tts_model, _tts_tokenizer
+    global _tts_model, _tts_tokenizer, _parler_ok
     if _tts_model is None:
         import torch
+        from transformers import VitsModel, AutoTokenizer as AT
         device = "cuda" if torch.cuda.is_available() else "cpu"
 
         parler_cached = Path.home().joinpath(
             ".cache/huggingface/hub/models--ai4bharat--indic-parler-tts-pretrained").exists()
 
         if parler_cached:
-            from parler_tts import ParlerTTSForConditionalGeneration
-            from transformers import AutoTokenizer as AT
-            model_id = "ai4bharat/indic-parler-tts-pretrained"
-            _tts_tokenizer = AT.from_pretrained(model_id)
-            _tts_model = ParlerTTSForConditionalGeneration.from_pretrained(
-                model_id,
-                torch_dtype=torch.float16 if device == "cuda" else torch.float32,
-            ).to(device)
-            _tts_model._tts_type = "parler"
-        else:
-            from transformers import VitsModel, AutoTokenizer as AT
+            try:
+                from parler_tts import ParlerTTSForConditionalGeneration
+                model_id = "ai4bharat/indic-parler-tts-pretrained"
+                _tts_tokenizer = AT.from_pretrained(model_id)
+                _tts_model = ParlerTTSForConditionalGeneration.from_pretrained(
+                    model_id,
+                    torch_dtype=torch.float16 if device == "cuda" else torch.float32,
+                ).to(device)
+                _tts_model._tts_type = "parler"
+                _parler_ok = True
+                print("✓ Parler TTS loaded", flush=True)
+            except Exception as exc:  # noqa: BLE001
+                print(f"⚠ Parler TTS failed ({exc}) — using MMS Kannada instead", flush=True)
+                _tts_model = None
+                _tts_tokenizer = None
+                _parler_ok = False
+
+        if _tts_model is None:
             _tts_model = VitsModel.from_pretrained("facebook/mms-tts-kan").to(device)
             _tts_tokenizer = AT.from_pretrained("facebook/mms-tts-kan")
             _tts_model._tts_type = "mms"
+            _parler_ok = False
 
         _tts_model.eval()
     return _tts_model, _tts_tokenizer
 
-
-# ── Fast TTS — mms-tts-kan, always <0.5s, for single-word Speak button ───────
-_fast_tts_model     = None
-_fast_tts_tokenizer = None
 
 def get_fast_tts():
     global _fast_tts_model, _fast_tts_tokenizer
@@ -203,23 +213,35 @@ def get_fast_tts():
     return _fast_tts_model, _fast_tts_tokenizer
 
 
+def _mms_wav(text: str) -> bytes:
+    import torch, scipy.io.wavfile
+    model, tokenizer = get_fast_tts()
+    device = next(model.parameters()).device
+    inputs = {k: v.to(device) for k, v in tokenizer(text, return_tensors="pt").items()}
+    with torch.no_grad():
+        audio = model(**inputs).waveform.squeeze().cpu().numpy().astype(np.float32)
+    sample_rate = model.config.sampling_rate
+    audio_i16 = (audio / max(np.abs(audio).max(), 1e-6) * 32767).astype(np.int16)
+    buf = io.BytesIO()
+    scipy.io.wavfile.write(buf, sample_rate, audio_i16)
+    return buf.getvalue()
+
+
 def synthesize_wav(text: str, voice: str = DEFAULT_VOICE, fast: bool = False) -> bytes:
     """Generate Kannada speech.
-    fast=True  → mms-tts-kan (<0.5s)  — single word preview
-    fast=False → indic-parler-tts (3-6s, high quality) — full sentence
+    fast=True  → mms-tts-kan (<0.5s)
+    fast=False → parler if available, else MMS
     """
     import torch, scipy.io.wavfile
 
+    text = (text or "").strip()
+    if not text:
+        raise ValueError("empty TTS text")
+
     if fast:
-        # Fast path: mms-tts-kan, instant
-        model, tokenizer = get_fast_tts()
-        device = next(model.parameters()).device
-        inputs = {k: v.to(device) for k, v in tokenizer(text, return_tensors="pt").items()}
-        with torch.no_grad():
-            audio = model(**inputs).waveform.squeeze().cpu().numpy().astype(np.float32)
-        sample_rate = model.config.sampling_rate
-    else:
-        # Quality path: parler-tts with voice description
+        return _mms_wav(text)
+
+    try:
         model, tokenizer = get_tts()
         device = next(model.parameters()).device
         tts_type = getattr(model, "_tts_type", "mms")
@@ -231,18 +253,16 @@ def synthesize_wav(text: str, voice: str = DEFAULT_VOICE, fast: bool = False) ->
             with torch.no_grad():
                 gen = model.generate(input_ids=input_ids, prompt_input_ids=prompt_ids)
             audio = gen.cpu().numpy().squeeze().astype(np.float32)
-        else:
-            inputs = {k: v.to(device) for k, v in tokenizer(text, return_tensors="pt").items()}
-            with torch.no_grad():
-                audio = model(**inputs).waveform.squeeze().cpu().numpy().astype(np.float32)
+            sample_rate = model.config.sampling_rate
+            audio_i16 = (audio / max(np.abs(audio).max(), 1e-6) * 32767).astype(np.int16)
+            buf = io.BytesIO()
+            scipy.io.wavfile.write(buf, sample_rate, audio_i16)
+            return buf.getvalue()
 
-        sample_rate = model.config.sampling_rate
-
-    audio_i16 = (audio / max(np.abs(audio).max(), 1e-6) * 32767).astype(np.int16)
-    buf = io.BytesIO()
-    scipy.io.wavfile.write(buf, sample_rate, audio_i16)
-    return buf.getvalue()
-
+        return _mms_wav(text)
+    except Exception as exc:  # noqa: BLE001
+        print(f"⚠ TTS quality path failed ({exc}) — falling back to MMS", flush=True)
+        return _mms_wav(text)
 
 def _init_mediapipe():
     global _pose_landmarker, _hand_landmarker
@@ -277,6 +297,24 @@ def _hand_frame_coverage(seq: np.ndarray) -> float:
     return float(np.mean(left | right))
 
 
+def _pose_wrist_coverage(seq: np.ndarray) -> float:
+    """MediaPipe Hands often misses on webcam; pose wrists (15/16) are a fallback."""
+    if seq.ndim != 2 or seq.shape[0] == 0 or seq.shape[1] < 99:
+        return 0.0
+    # pose flattened: landmark i → indices 3i..3i+2
+    lw = np.abs(seq[:, 15 * 3:15 * 3 + 3]).sum(axis=1) > 1e-4
+    rw = np.abs(seq[:, 16 * 3:16 * 3 + 3]).sum(axis=1) > 1e-4
+    return float(np.mean(lw | rw))
+
+
+def _signing_activity(seq: np.ndarray) -> float:
+    """Prefer hand landmarks; fall back to pose wrists so live signing still works."""
+    hands = _hand_frame_coverage(seq)
+    if hands >= 0.12:
+        return hands
+    return max(hands, _pose_wrist_coverage(seq) * 0.85)
+
+
 def predict_frame_sequence(frames_bgr: list) -> list[tuple[str, float]]:
     import mediapipe as mp
     from extract_landmarks import frame_feature
@@ -297,22 +335,17 @@ def predict_frame_sequence(frames_bgr: list) -> list[tuple[str, float]]:
         return []
 
     seq = np.stack(feats)
-    hands = _hand_frame_coverage(seq)
-    # Without hands the model falls back to body pose and invents Animal/Mouse/Cow etc.
-    if hands < 0.35:
+    activity = _signing_activity(seq)
+    # Only block empty / black frames — do not require perfect hand detection.
+    pose_energy = float(np.abs(seq[:, :99]).mean()) if seq.size else 0.0
+    if activity < 0.08 and pose_energy < 1e-4:
         return [("__hands__", 0.0)]
 
     bundle = get_sequence_model()
     if bundle is not None:
         from sequence_model import predict_topk
         model, classes, device = bundle
-        preds = predict_topk(model, classes, seq, device, k=5)
-        if len(preds) >= 2:
-            margin = preds[0][1] - preds[1][1]
-            # Softmax can peak on a wrong animal class; require a clear winner.
-            if margin < 0.08 and preds[0][1] < 0.55:
-                return [(preds[0][0], preds[0][1] * 0.35)]
-        return preds
+        return predict_topk(model, classes, seq, device, k=5)
 
     from train_classifier import sequence_to_features
     x = sequence_to_features(seq).reshape(1, -1)
@@ -478,8 +511,8 @@ async def api_signs():
 
 @app.get("/api/voices")
 async def api_voices():
-    parler_ready = Path.home().joinpath(
-        ".cache/huggingface/hub/models--ai4bharat--indic-parler-tts-pretrained").exists()
+    # Folder can exist but be corrupt — only claim Parler if it actually loaded.
+    parler_ready = bool(_parler_ok)
     return {
         "voices": [
             {"id": "female_clear", "name": "Ananya",  "description": "Female · Clear · Moderate pace"},
@@ -528,14 +561,14 @@ async def api_predict(req: PredictRequest):
             "top_conf": 0.0,
             "top5": [],
             "idle": True,
-            "reason": "Hands not visible — step back so head, torso, and both hands are in frame",
+            "reason": "Move into frame and sign — keep hands visible",
         }
 
-    # Soft gate: if top-1 is weak or barely ahead of top-2, mark uncertain
     margin = 0.0
     if len(preds) >= 2:
         margin = float(top_conf - preds[1][1])
-    uncertain = top_conf < 0.40 or margin < 0.08
+    # Soft hint only — do not hide the prediction from the UI
+    uncertain = top_conf < 0.22
 
     return {
         "top_label": top_label,
@@ -613,8 +646,43 @@ async def spa_fallback(full_path: str):
 
 # ── entry point ───────────────────────────────────────────────────────────────
 if __name__ == "__main__":
+    import argparse
     import uvicorn
 
-    print("▶ Backend  — http://localhost:5000")
+    parser = argparse.ArgumentParser(description="SilentTalk backend")
+    parser.add_argument(
+        "--https",
+        action="store_true",
+        help="HTTPS with certs/dev-*.pem so phone browsers can use the camera on LAN",
+    )
+    parser.add_argument("--port", type=int, default=5000)
+    args = parser.parse_args()
+
+    ssl_kwargs = {}
+    scheme = "http"
+    if args.https:
+        cert = ROOT / "certs" / "dev-cert.pem"
+        key = ROOT / "certs" / "dev-key.pem"
+        if not cert.exists() or not key.exists():
+            print("Creating self-signed cert for phone camera access...")
+            from isl_recognition.make_dev_cert import main as make_cert
+
+            if make_cert() != 0:
+                raise SystemExit(1)
+        ssl_kwargs = {"ssl_certfile": str(cert), "ssl_keyfile": str(key)}
+        scheme = "https"
+
+    print(f"▶ Backend  — {scheme}://localhost:{args.port}")
+    if args.https:
+        print(f"▶ Phone    — {scheme}://192.168.1.10:{args.port}  (accept certificate warning)")
+    else:
+        print("▶ Phone camera needs HTTPS — restart with:  python app.py --https")
     print("▶ UI dev   — cd frontend && npm run dev  →  http://localhost:5173")
-    uvicorn.run("app:app", host="0.0.0.0", port=5000, reload=False, workers=1)
+    uvicorn.run(
+        "app:app",
+        host="0.0.0.0",
+        port=args.port,
+        reload=False,
+        workers=1,
+        **ssl_kwargs,
+    )

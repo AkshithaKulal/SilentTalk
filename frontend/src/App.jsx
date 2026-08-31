@@ -27,8 +27,8 @@ export default function App() {
   // it is appended — no "Add to Sentence" click. Cooldown stops duplicates.
   const pendingRef = useRef({ label: null, count: 0 })
   const lastCommitRef = useRef({ label: null, t: 0 })
-  const AUTO_CONF = 72
-  const SAME_WORD_COOLDOWN_MS = 3200
+  const AUTO_CONF = 58
+  const SAME_WORD_COOLDOWN_MS = 2800
 
   // ── Client-side translation cache (Fix 3) ─────────────────────────────────
   // Word → Kannada translation. Avoids even the HTTP call for repeated words.
@@ -87,15 +87,15 @@ export default function App() {
   // Live predictions auto-commit. Translation still only on add/Speak, not every frame.
   const onPrediction = useCallback((data) => {
     setPrediction(data)
-    if (data?.idle || data?.uncertain) {
+    if (data?.idle) {
       pendingRef.current = { label: null, count: 0 }
       return
     }
     const conf = data?.top_conf ?? 0
     const margin = data?.margin ?? 100
     const label = (data?.top_label || '').trim()
-    // Need confidence AND clear gap over 2nd place (stops Animal/Mouse/Cow flips)
-    if (!label || conf < AUTO_CONF || margin < 10) {
+    // Soft gate: still need some confidence; margin only blocks near-ties
+    if (!label || conf < AUTO_CONF || (conf < 70 && margin < 5)) {
       pendingRef.current = { label: null, count: 0 }
       return
     }
@@ -104,7 +104,7 @@ export default function App() {
     } else {
       pendingRef.current = { label, count: 1 }
     }
-    const needStreak = conf >= 85 ? 2 : 3
+    const needStreak = conf >= 75 ? 1 : 2
     const now = Date.now()
     const sameAsLast = lastCommitRef.current.label === label
     const tooSoon = now - lastCommitRef.current.t < SAME_WORD_COOLDOWN_MS
@@ -175,7 +175,8 @@ export default function App() {
       // Update sentence state with fresh translations
       setSentence(updatedSentence)
 
-      await playTTS(fullKannada, !parlerReady)
+      // Always use MMS path for reliable Speak (Parler cache may be corrupt)
+      await playTTS(fullKannada, true)
 
       setHistory(prev => [
         {
@@ -196,25 +197,27 @@ export default function App() {
   const onReplayHistory = useCallback(async (kannada) => {
     if (!kannada || isSpeaking) return
     setIsSpeaking(true); setSpeakingTarget('replay')
-    try { await playTTS(kannada, false) } catch { /* silent */ }  // quality replay
+    try { await playTTS(kannada, true) } catch { /* silent */ }
     setIsSpeaking(false); setSpeakingTarget(null)
   }, [isSpeaking, selectedVoice])
 
   const onPreviewVoice = useCallback(async () => {
     if (isSpeaking) return
     setIsSpeaking(true); setSpeakingTarget('preview')
-    try { await playTTS(VOICE_SAMPLE_KN, !parlerReady) } catch { /* silent */ }
+    try { await playTTS(VOICE_SAMPLE_KN, true) } catch { /* silent */ }
     setIsSpeaking(false); setSpeakingTarget(null)
   }, [isSpeaking, selectedVoice, parlerReady])
 
-  const playTTS = async (text, fast = false) => {
+  const playTTS = async (text, fast = true) => {
     const res = await fetch('/api/tts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text, voice: selectedVoice, fast })
     })
     const data = await res.json()
-    if (!data.audio_b64) throw new Error('No audio')
+    if (!res.ok || !data.audio_b64) {
+      throw new Error(data.detail || data.error || 'TTS failed')
+    }
     const bytes = atob(data.audio_b64)
     const buf = new Uint8Array(bytes.length)
     for (let i = 0; i < bytes.length; i++) buf[i] = bytes.charCodeAt(i)
@@ -227,6 +230,26 @@ export default function App() {
       audio.onerror = () => { URL.revokeObjectURL(url); reject() }
     })
   }
+
+  const onSpeakTap = useCallback(async () => {
+    if (isSpeaking) return
+    if (sentence.length > 0) {
+      await onSpeakSentence()
+    } else if (prediction?.top_label && !prediction?.idle) {
+      await onSpeakWord()
+    }
+  }, [sentence.length, prediction, isSpeaking, onSpeakSentence, onSpeakWord])
+
+  const canSpeakNow =
+    !isSpeaking &&
+    (sentence.length > 0 || (prediction?.top_label && !prediction?.idle))
+
+  const speakHint =
+    sentence.length > 0
+      ? "Tap Speak for Kannada audio"
+      : prediction?.top_label && !prediction?.idle
+        ? `Tap Speak for “${prediction.top_label}”`
+        : "Hold a sign — Speak lights up when a word is detected"
 
   return (
     <div className="app-shell">
@@ -242,7 +265,13 @@ export default function App() {
         voiceBusy={isSpeaking}
       />
       <main className="workspace">
-        <WebcamCapture selectedSign={selectedSign} onPrediction={onPrediction} />
+        <WebcamCapture
+          selectedSign={selectedSign}
+          onPrediction={onPrediction}
+          onSpeakNow={onSpeakWord}
+          canSpeakNow={canSpeakNow && !isSpeaking && !!prediction?.top_label && !prediction?.idle && sentence.length === 0}
+          isSpeaking={isSpeaking}
+        />
         <LiveRail
           history={history}
           isSpeaking={isSpeaking}
@@ -252,15 +281,19 @@ export default function App() {
       </main>
       <MessageBar
         sentence={sentence}
-        isSpeaking={(speakingTarget === 'sentence' || speakingTarget === 'preview') && isSpeaking}
+        isSpeaking={(speakingTarget === 'sentence' || speakingTarget === 'preview' || speakingTarget === 'word') && isSpeaking}
         speakingName={
           speakingTarget === 'sentence'
             ? voiceById(selectedVoice).name
             : speakingTarget === 'preview'
               ? `Trying ${voiceById(selectedVoice).name}`
-              : ''
+              : speakingTarget === 'word'
+                ? prediction?.top_label || 'Speaking'
+                : ''
         }
-        onSpeak={onSpeakSentence}
+        onSpeak={onSpeakTap}
+        canSpeak={canSpeakNow}
+        speakHint={speakHint}
         onClear={clearSentence}
         onRemove={removeFromSentence}
         onUndo={undoLast}

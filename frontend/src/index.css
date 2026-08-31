@@ -378,6 +378,35 @@ select:focus-visible {
   box-shadow: var(--shadow);
   backdrop-filter: blur(12px);
 }
+.message-card--speak {
+  align-items: center;
+}
+.speak-col {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 132px;
+}
+.cam-speak-now {
+  flex-shrink: 0;
+  height: 34px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.35);
+}
+.cam-speak-now:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
 
 .eq {
   display: inline-flex;
@@ -554,11 +583,28 @@ select:focus-visible {
 }
 
 @media (max-width: 960px) {
-  .app-shell { height: auto; overflow: auto; min-height: 100vh; }
+  .app-shell { height: auto; overflow: auto; min-height: 100vh; min-height: 100dvh; }
   .workspace {
     grid-template-columns: 1fr;
     height: auto;
   }
-  .cam-col { height: min(72vh, 640px); }
+  .cam-col { height: min(62vh, 520px); }
   .live-rail { height: auto; }
+  .message-dock {
+    position: sticky;
+    bottom: 0;
+    z-index: 30;
+    padding-bottom: max(10px, env(safe-area-inset-bottom));
+    background: linear-gradient(transparent, var(--bg) 12%);
+  }
+  .message-card--speak {
+    grid-template-columns: 1fr;
+  }
+  .speak-col {
+    min-width: 0;
+  }
+  .speak-main-btn {
+    height: 56px !important;
+    font-size: 18px !important;
+  }
 }
