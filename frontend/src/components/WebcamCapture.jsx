@@ -1,6 +1,6 @@
 ﻿import { useState, useRef, useEffect, useCallback } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { Camera, Square, Loader2, CameraOff, Zap, Radio } from "lucide-react"
+import { Camera, Square, Loader2, Zap, Radio } from "lucide-react"
 
 const LIVE_CAPTURE_FRAMES   = 12
 const MANUAL_CAPTURE_FRAMES = 18
@@ -173,6 +173,7 @@ export default function WebcamCapture({ selectedSign, onPrediction }) {
       const s = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } })
       setStream(s)
       if (videoRef.current) videoRef.current.srcObject = s
+      setLiveMode(true)
     } catch (e) { setError("Camera access denied: " + e.message) }
   }
 
@@ -217,13 +218,19 @@ export default function WebcamCapture({ selectedSign, onPrediction }) {
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+    <div className="cam-col" style={{ gap: 10 }}>
       <div
         style={{
+          flex: 1,
+          minHeight: 0,
+          display: "flex",
+          flexDirection: "column",
           background: "var(--surface)",
-          borderRadius: 16,
+          borderRadius: 22,
           overflow: "hidden",
-          border: `1px solid ${liveMode ? "var(--live)" : "var(--line)"}`,
+          border: `1px solid ${liveMode ? "rgba(225,29,72,0.35)" : "var(--line)"}`,
+          boxShadow: liveMode ? "0 0 0 4px rgba(225,29,72,0.08), var(--shadow)" : "var(--shadow)",
+          transition: "border-color 0.25s ease, box-shadow 0.25s ease",
         }}
       >
         <div
@@ -235,13 +242,14 @@ export default function WebcamCapture({ selectedSign, onPrediction }) {
             borderBottom: "1px solid var(--line)",
           }}
         >
-          <span style={{ fontSize: 13, fontWeight: 700 }}>
+          <span style={{ fontSize: 13, fontWeight: 700, display: "flex", alignItems: "center", gap: 8 }}>
+            {liveMode && <span className="live-pip" />}
             Camera{selectedSign ? ` · ${selectedSign.label}` : ""}
           </span>
           {statusBadge()}
         </div>
 
-        <div style={{ position: "relative", background: "#111827", aspectRatio: "4/3" }}>
+        <div style={{ position: "relative", flex: 1, minHeight: 0, background: "#0b1220" }}>
           <video
             ref={videoRef}
             autoPlay
@@ -257,19 +265,28 @@ export default function WebcamCapture({ selectedSign, onPrediction }) {
           />
 
           {!stream && (
-            <div
-              style={{
-                position: "absolute",
-                inset: 0,
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 10,
-              }}
-            >
-              <CameraOff size={28} color="rgba(255,255,255,0.35)" />
-              <p style={{ fontSize: 14, color: "rgba(255,255,255,0.45)" }}>Start the camera to begin</p>
+            <div className="stage-empty">
+              <span className="orb orb-a" />
+              <span className="orb orb-b" />
+              <span className="orb orb-c" />
+              <div className="ring-wrap">
+                <Camera size={28} color="#fff" />
+              </div>
+              <p style={{ fontSize: 18, fontWeight: 800, color: "#fff", zIndex: 1, letterSpacing: "-0.03em" }}>
+                Your signs, out loud
+              </p>
+              <p style={{ fontSize: 13, color: "rgba(255,255,255,0.65)", zIndex: 1, maxWidth: 280, textAlign: "center" }}>
+                Camera stays on this device. Press start and sign in frame.
+              </p>
+              <motion.button
+                type="button"
+                className="start-live-btn"
+                onClick={startCamera}
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
+              >
+                <Camera size={16} /> Start live
+              </motion.button>
             </div>
           )}
 
@@ -338,54 +355,91 @@ export default function WebcamCapture({ selectedSign, onPrediction }) {
               <div style={{ width: `${progress}%`, height: "100%", background: "var(--accent)" }} />
             </div>
           )}
+
+          <AnimatePresence>
+            {livePred && (
+              <motion.div
+                key={livePred.label}
+                initial={{ y: 16, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                exit={{ opacity: 0 }}
+                style={{
+                  position: "absolute",
+                  left: 12,
+                  right: 12,
+                  bottom: 12,
+                  padding: "10px 14px",
+                  borderRadius: 14,
+                  background: "rgba(255,255,255,0.92)",
+                  backdropFilter: "blur(10px)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 10,
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: 18, fontWeight: 800, letterSpacing: "-0.03em" }}>{livePred.label}</div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: livePred.conf >= 70 ? "var(--ok)" : livePred.conf >= 40 ? "var(--warn)" : "var(--bad)" }}>
+                    {livePred.conf}% · {livePred.conf >= 60 ? "joining message" : "hold the sign"}
+                  </div>
+                </div>
+                {liveMode && <span style={{ fontSize: 11, fontWeight: 800, color: "var(--live)", letterSpacing: "0.06em" }}>LIVE</span>}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: stream ? "1fr 1fr 1fr" : "1fr", gap: 8 }}>
-        {!stream ? (
-          <button type="button" onClick={startCamera} style={{ ...btnBase, border: "none", background: "var(--accent)", color: "#fff" }}>
-            <Camera size={16} /> Start camera
+      {stream && (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+          <button
+            type="button"
+            onClick={stopCamera}
+            style={{ ...btnBase, background: "var(--surface)", border: "1px solid var(--line)", color: "var(--muted)" }}
+          >
+            <Square size={13} /> Stop
           </button>
-        ) : (
-          <>
-            <button
-              type="button"
-              onClick={stopCamera}
-              style={{ ...btnBase, background: "var(--surface)", border: "1px solid var(--line)", color: "var(--muted)" }}
-            >
-              <Square size={13} /> Stop
-            </button>
-            <button
-              type="button"
-              onClick={toggleLive}
-              style={{
-                ...btnBase,
-                border: liveMode ? "none" : "1px solid var(--live)",
-                background: liveMode ? "var(--live)" : "var(--surface)",
-                color: liveMode ? "#fff" : "var(--live)",
-              }}
-            >
-              <Radio size={13} />
-              {liveMode ? "Stop live" : "Go live"}
-            </button>
-            <button
-              type="button"
-              onClick={startManualCapture}
-              disabled={capturing || processing || liveMode}
-              style={{
-                ...btnBase,
-                border: capturing || processing || liveMode ? "1px solid var(--line)" : "none",
-                background: capturing || processing || liveMode ? "var(--bg)" : "var(--accent)",
-                color: capturing || processing || liveMode ? "var(--faint)" : "#fff",
-                cursor: capturing || processing || liveMode ? "not-allowed" : "pointer",
-              }}
-            >
-              {processing && !liveMode ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> : <Zap size={14} />}
-              {capturing && !liveMode ? `${countdown}s` : "Capture once"}
-            </button>
-          </>
-        )}
-      </div>
+          <button
+            type="button"
+            onClick={toggleLive}
+            style={{
+              ...btnBase,
+              border: liveMode ? "none" : "1px solid var(--live)",
+              background: liveMode ? "var(--live)" : "var(--surface)",
+              color: liveMode ? "#fff" : "var(--live)",
+              boxShadow: liveMode ? "0 8px 20px rgba(225,29,72,0.25)" : "none",
+            }}
+          >
+            <Radio size={13} />
+            {liveMode ? "Listening…" : "Go live"}
+          </button>
+        </div>
+      )}
+
+      {stream && !liveMode && (
+        <button
+          type="button"
+          onClick={startManualCapture}
+          disabled={capturing || processing}
+          style={{
+            alignSelf: "flex-start",
+            background: "none",
+            border: "none",
+            color: "var(--muted)",
+            fontSize: 12,
+            fontWeight: 600,
+            cursor: capturing || processing ? "not-allowed" : "pointer",
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            padding: 0,
+          }}
+        >
+          {processing ? <Loader2 size={12} style={{ animation: "spin 1s linear infinite" }} /> : <Zap size={12} />}
+          {capturing ? `${countdown}s` : "Capture once instead"}
+        </button>
+      )}
 
       {error && (
         <div style={{ background: "var(--bad-soft)", border: "1px solid #fecaca", borderRadius: 10, padding: "10px 12px", fontSize: 13, color: "var(--bad)" }}>
@@ -393,9 +447,11 @@ export default function WebcamCapture({ selectedSign, onPrediction }) {
         </div>
       )}
 
-      <p style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.6 }}>
-        Go live to keep reading signs. High-confidence words join the message. Press Speak when you are finished.
-      </p>
+      {stream && (
+        <p style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.6 }}>
+          Keep signing. Confident words join the message. Pick a voice, then Speak.
+        </p>
+      )}
     </div>
   )
 }

@@ -1,11 +1,18 @@
 #!/usr/bin/env python3
-"""SilentTalk — FastAPI backend.
-ISL sign prediction → Kannada translation → TTS (indic-parler-tts).
+"""SilentTalk — FastAPI backend (sign → translate → TTS).
 
-Run:  uvicorn app:app --host 0.0.0.0 --port 5000
+Development (UI + API separate — use this while editing the frontend):
+  Terminal 1:  python app.py
+  Terminal 2:  cd frontend && npm run dev
+  Open:        http://localhost:5173
+
+Production / demo (one port, built UI):
+  cd frontend && npm run build
+  python app.py
+  Open:        http://localhost:5000
 """
 
-import asyncio, base64, io, json, re, sys, threading
+import asyncio, base64, io, json, os, re, sys, threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional, List
@@ -14,6 +21,7 @@ import numpy as np
 import cv2
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -383,6 +391,19 @@ async def lifespan(app: FastAPI):
 # ── FastAPI app ───────────────────────────────────────────────────────────────
 app = FastAPI(title="SilentTalk API", version="2.0.0", lifespan=lifespan)
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:4173",
+        "http://127.0.0.1:4173",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 # ── request/response models ───────────────────────────────────────────────────
 class PredictRequest(BaseModel):
@@ -533,22 +554,30 @@ async def serve_sample(folder: str, filename: str):
     return FileResponse(path)
 
 
-# ── serve React SPA ───────────────────────────────────────────────────────────
+# ── serve React SPA (built files; dev UI runs on Vite :5173) ──────────────────
 REACT_DIR = ROOT / "static" / "react"
 if REACT_DIR.exists():
     app.mount("/assets", StaticFiles(directory=REACT_DIR / "assets"), name="assets")
 
 @app.get("/{full_path:path}")
 async def spa_fallback(full_path: str):
-    """Serve React index.html for all non-API routes."""
+    """Serve built React. While coding UI, use Vite on port 5173."""
     index = REACT_DIR / "index.html"
     if index.exists():
         return FileResponse(index)
-    return JSONResponse({"error": "Frontend not built. Run: cd frontend && npm run build"}, 404)
+    return JSONResponse(
+        {
+            "error": "Frontend not built.",
+            "hint": "Run: cd frontend && npm run dev  (open http://localhost:5173)",
+        },
+        404,
+    )
 
 
 # ── entry point ───────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     import uvicorn
-    print("Starting SilentTalk (FastAPI) at http://localhost:5000")
+
+    print("▶ Backend  — http://localhost:5000")
+    print("▶ UI dev   — cd frontend && npm run dev  →  http://localhost:5173")
     uvicorn.run("app:app", host="0.0.0.0", port=5000, reload=False, workers=1)

@@ -1,53 +1,71 @@
-import { Hand, BookOpen } from "lucide-react"
+import { motion } from "framer-motion"
+import { BookOpen, Hand } from "lucide-react"
+import VoicePicker from "./VoicePicker"
 
-export default function Header({ status, libraryOpen, onToggleLibrary }) {
+export default function Header({
+  status,
+  libraryOpen,
+  onToggleLibrary,
+  selectedVoice,
+  onVoiceChange,
+  onPreviewVoice,
+  isPreviewing,
+  parlerReady,
+  voiceBusy,
+}) {
   const ready = status.classifier && status.translation_model && status.tts_model
 
   return (
     <header
       style={{
-        background: "var(--surface)",
-        borderBottom: "1px solid var(--line)",
         position: "sticky",
         top: 0,
         zIndex: 40,
+        backdropFilter: "blur(16px)",
+        background: "rgba(255,255,255,0.78)",
+        borderBottom: "1px solid var(--line)",
       }}
     >
       <div
         style={{
-          maxWidth: 1280,
+          maxWidth: 1360,
           margin: "0 auto",
           padding: "0 20px",
           height: 56,
           display: "flex",
           alignItems: "center",
-          gap: 14,
+          gap: 12,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <motion.div
+          initial={{ opacity: 0, y: -6 }}
+          animate={{ opacity: 1, y: 0 }}
+          style={{ display: "flex", alignItems: "center", gap: 10 }}
+        >
           <div
             style={{
-              width: 32,
-              height: 32,
-              borderRadius: 8,
-              background: "var(--accent-soft)",
-              color: "var(--accent)",
+              width: 34,
+              height: 34,
+              borderRadius: 11,
+              background: "linear-gradient(145deg, #3b82f6, #1d4ed8)",
+              color: "#fff",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
+              boxShadow: "0 8px 18px rgba(37,99,235,0.28)",
             }}
           >
             <Hand size={16} strokeWidth={2.4} />
           </div>
           <div>
-            <div style={{ fontSize: 16, fontWeight: 700, letterSpacing: "-0.02em", lineHeight: 1.1 }}>
+            <div style={{ fontSize: 16, fontWeight: 800, letterSpacing: "-0.03em", lineHeight: 1.1 }}>
               SilentTalk
             </div>
-            <div style={{ fontSize: 11, color: "var(--muted)" }}>Sign to Kannada speech</div>
+            <div style={{ fontSize: 11, color: "var(--muted)" }}>Sign · Kannada · Speak</div>
           </div>
-        </div>
+        </motion.div>
 
-        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
           <span
             style={{
               display: "inline-flex",
@@ -55,7 +73,7 @@ export default function Header({ status, libraryOpen, onToggleLibrary }) {
               gap: 6,
               fontSize: 12,
               fontWeight: 600,
-              color: ready ? "var(--ok)" : "var(--muted)",
+              color: ready ? "var(--ok)" : "var(--warn)",
             }}
           >
             <span
@@ -63,33 +81,34 @@ export default function Header({ status, libraryOpen, onToggleLibrary }) {
                 width: 7,
                 height: 7,
                 borderRadius: "50%",
-                background: ready ? "var(--ok)" : "var(--faint)",
+                background: ready ? "var(--ok)" : "var(--warn)",
+                boxShadow: ready ? "0 0 0 4px rgba(5,150,105,0.15)" : "0 0 0 4px rgba(217,119,6,0.15)",
               }}
             />
-            {ready ? "Ready" : "Starting"}
+            {ready ? "Ready" : "UI only"}
           </span>
+
+          <VoicePicker
+            selectedVoice={selectedVoice}
+            onVoiceChange={onVoiceChange}
+            onPreview={onPreviewVoice}
+            isPreviewing={isPreviewing}
+            parlerReady={parlerReady}
+            disabled={voiceBusy}
+          />
 
           <button
             type="button"
             onClick={onToggleLibrary}
             aria-pressed={libraryOpen}
+            className="header-btn"
             style={{
-              height: 34,
-              padding: "0 12px",
-              borderRadius: 8,
-              border: "1px solid var(--line)",
               background: libraryOpen ? "var(--accent-soft)" : "var(--surface)",
               color: libraryOpen ? "var(--accent-ink)" : "var(--ink)",
-              fontSize: 13,
-              fontWeight: 600,
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
             }}
           >
             <BookOpen size={14} />
-            Practice signs
+            Practice
           </button>
         </div>
       </div>

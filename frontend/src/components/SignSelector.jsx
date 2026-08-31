@@ -39,7 +39,7 @@ export default function SignSelector({ onSelect, selected, onClose }) {
     <div
       role="dialog"
       aria-label="Practice signs"
-      style={{
+            style={{
         position: "fixed",
         inset: 0,
         zIndex: 60,

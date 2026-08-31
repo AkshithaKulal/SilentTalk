@@ -5,6 +5,7 @@ import WebcamCapture from './components/WebcamCapture'
 import MessageBar from './components/MessageBar'
 import LiveRail from './components/LiveRail'
 import { useSystemStatus } from './hooks/useSystemStatus'
+import { DEFAULT_VOICE, VOICE_SAMPLE_KN, voiceById } from './voices'
 
 export default function App() {
   const [libraryOpen, setLibraryOpen]       = useState(false)
@@ -16,8 +17,10 @@ export default function App() {
   const [history, setHistory]               = useState([])
   const [isSpeaking, setIsSpeaking]         = useState(false)
   const [speakingTarget, setSpeakingTarget] = useState(null)
-  const [selectedVoice, setSelectedVoice]   = useState('female_clear')
-  const [voices, setVoices]                 = useState([])
+  const [selectedVoice, setSelectedVoice]   = useState(() => {
+    try { return localStorage.getItem('st-voice') || DEFAULT_VOICE } catch { return DEFAULT_VOICE }
+  })
+  const [parlerReady, setParlerReady]       = useState(false)
   const status = useSystemStatus()
 
   // Auto-commit: same gloss must stay confident across live windows, then
@@ -34,9 +37,13 @@ export default function App() {
   // Load voices on mount
   useEffect(() => {
     fetch('/api/voices').then(r => r.json()).then(d => {
-      if (d.voices) setVoices(d.voices)
+      if (typeof d.parler_ready === 'boolean') setParlerReady(d.parler_ready)
     }).catch(() => {})
   }, [])
+
+  useEffect(() => {
+    try { localStorage.setItem('st-voice', selectedVoice) } catch { /* ignore */ }
+  }, [selectedVoice])
 
   // ── Translate one word — cache-first (Fix 3) ───────────────────────────────
   const translateWord = useCallback(async (word) => {
@@ -106,6 +113,10 @@ export default function App() {
     setSentence(prev => prev.filter(w => w.id !== id))
   }, [])
 
+  const undoLast = useCallback(() => {
+    setSentence(prev => prev.slice(0, -1))
+  }, [])
+
   const clearSentence = useCallback(() => setSentence([]), [])
 
   // ── Speak single word: fast mms (<0.5s) ─────────────────────────────────
@@ -158,7 +169,7 @@ export default function App() {
       // Update sentence state with fresh translations
       setSentence(updatedSentence)
 
-      await playTTS(fullKannada, true)   // mms — sentence speak must stay instant
+      await playTTS(fullKannada, !parlerReady)
 
       setHistory(prev => [
         {
@@ -173,7 +184,7 @@ export default function App() {
     } catch { /* silent */ }
 
     setIsSpeaking(false); setSpeakingTarget(null)
-  }, [sentence, isSpeaking, selectedVoice])
+  }, [sentence, isSpeaking, selectedVoice, parlerReady])
 
   // ── Replay from history ───────────────────────────────────────────────────
   const onReplayHistory = useCallback(async (kannada) => {
@@ -183,7 +194,13 @@ export default function App() {
     setIsSpeaking(false); setSpeakingTarget(null)
   }, [isSpeaking, selectedVoice])
 
-  // ── TTS helper ────────────────────────────────────────────────────────────
+  const onPreviewVoice = useCallback(async () => {
+    if (isSpeaking) return
+    setIsSpeaking(true); setSpeakingTarget('preview')
+    try { await playTTS(VOICE_SAMPLE_KN, !parlerReady) } catch { /* silent */ }
+    setIsSpeaking(false); setSpeakingTarget(null)
+  }, [isSpeaking, selectedVoice, parlerReady])
+
   const playTTS = async (text, fast = false) => {
     const res = await fetch('/api/tts', {
       method: 'POST',
@@ -211,30 +228,37 @@ export default function App() {
         status={status}
         libraryOpen={libraryOpen}
         onToggleLibrary={() => setLibraryOpen((v) => !v)}
-      />
-      <MessageBar
-        sentence={sentence}
-        isSpeaking={speakingTarget === 'sentence' && isSpeaking}
-        onSpeak={onSpeakSentence}
-        onClear={clearSentence}
-        onRemove={removeFromSentence}
+        selectedVoice={selectedVoice}
+        onVoiceChange={setSelectedVoice}
+        onPreviewVoice={onPreviewVoice}
+        isPreviewing={speakingTarget === 'preview' && isSpeaking}
+        parlerReady={parlerReady}
+        voiceBusy={isSpeaking}
       />
       <main className="workspace">
         <WebcamCapture selectedSign={selectedSign} onPrediction={onPrediction} />
         <LiveRail
-          prediction={prediction}
-          translation={translation}
-          translating={translating}
           history={history}
           isSpeaking={isSpeaking}
           speakingTarget={speakingTarget}
-          voices={voices}
-          selectedVoice={selectedVoice}
-          onVoiceChange={setSelectedVoice}
-          onSpeakWord={onSpeakWord}
           onReplayHistory={onReplayHistory}
         />
       </main>
+      <MessageBar
+        sentence={sentence}
+        isSpeaking={(speakingTarget === 'sentence' || speakingTarget === 'preview') && isSpeaking}
+        speakingName={
+          speakingTarget === 'sentence'
+            ? voiceById(selectedVoice).name
+            : speakingTarget === 'preview'
+              ? `Trying ${voiceById(selectedVoice).name}`
+              : ''
+        }
+        onSpeak={onSpeakSentence}
+        onClear={clearSentence}
+        onRemove={removeFromSentence}
+        onUndo={undoLast}
+      />
       {libraryOpen && (
         <SignSelector
           onSelect={setSelectedSign}

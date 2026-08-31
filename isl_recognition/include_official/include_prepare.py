@@ -160,39 +160,56 @@ def needs_download(path: Path, expected: int) -> str | None:
     return None
 
 
-def download_one(url: str, dest: Path, expected: int) -> None:
+def download_one(url: str, dest: Path, expected: int, attempts: int = 6) -> None:
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_name(dest.name + ".part")
-    already = tmp.stat().st_size if tmp.exists() else 0
+    last_err: Exception | None = None
+    for attempt in range(1, attempts + 1):
+        try:
+            _download_attempt(url, dest, tmp, expected)
+            return
+        except Exception as exc:  # noqa: BLE001
+            last_err = exc
+            print(f"  attempt {attempt}/{attempts} failed: {exc}")
+            if attempt < attempts:
+                wait = min(20, 3 * attempt)
+                print(f"  waiting {wait}s, then resume...")
+                time.sleep(wait)
+    raise last_err or RuntimeError(f"download failed: {dest.name}")
 
+
+def _download_attempt(url: str, dest: Path, tmp: Path, expected: int) -> None:
+    already = tmp.stat().st_size if tmp.exists() else 0
     headers = {"User-Agent": USER_AGENT}
     if already > 0:
         headers["Range"] = f"bytes={already}-"
         print(f"  resume {dest.name} from {gb(already)}")
 
     req = urllib.request.Request(url, headers=headers)
+    # Long timeout: Zenodo often idles on ~1 GB files. 120s was cutting the stream.
     try:
-        resp = urllib.request.urlopen(req, timeout=120)
+        resp = urllib.request.urlopen(req, timeout=600)
     except urllib.error.HTTPError as err:
         if err.code in (416, 501) and already:
             tmp.unlink(missing_ok=True)
             already = 0
             req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-            resp = urllib.request.urlopen(req, timeout=120)
+            resp = urllib.request.urlopen(req, timeout=600)
         else:
             raise
 
-    mode = "ab" if already and resp.status == 206 else "wb"
+    mode = "ab" if already and getattr(resp, "status", 200) == 206 else "wb"
     if mode == "wb" and already:
+        print("  server ignored resume — restarting this file")
         already = 0
         tmp.unlink(missing_ok=True)
 
     total = expected or already
     try:
         length = resp.headers.get("Content-Length")
-        if length and resp.status != 206:
+        if length and getattr(resp, "status", 200) != 206:
             total = int(length)
-        elif length and resp.status == 206:
+        elif length and getattr(resp, "status", 200) == 206:
             total = already + int(length)
     except ValueError:
         pass
@@ -214,11 +231,14 @@ def download_one(url: str, dest: Path, expected: int) -> None:
                 else:
                     print(f"\r  {dest.name}: {gb(got)}", end="", flush=True)
     print()
-    tmp.replace(dest)
-    final = dest.stat().st_size
+    final = tmp.stat().st_size
     if expected and abs(final - expected) > max(1024 * 1024, int(expected * 0.002)):
-        dest.unlink(missing_ok=True)
-        raise RuntimeError(f"{dest.name} finished at {final} bytes, expected {expected}")
+        # Keep .part so the next attempt can resume. Do not promote to .zip.
+        raise RuntimeError(
+            f"incomplete download {final} bytes, expected {expected} "
+            f"(kept as {tmp.name} to resume)"
+        )
+    tmp.replace(dest)
     print(f"  OK {dest.name} ({gb(final)})")
 
 
