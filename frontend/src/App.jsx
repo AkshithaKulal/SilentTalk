@@ -5,7 +5,7 @@ import WebcamCapture from './components/WebcamCapture'
 import MessageBar from './components/MessageBar'
 import LiveRail from './components/LiveRail'
 import { useSystemStatus } from './hooks/useSystemStatus'
-import { DEFAULT_VOICE, VOICE_SAMPLE_KN, voiceById } from './voices'
+import { DEFAULT_VOICE, DEFAULT_ENGINE, VOICE_SAMPLE_KN, voiceById } from './voices'
 
 export default function App() {
   const [libraryOpen, setLibraryOpen]       = useState(false)
@@ -20,7 +20,11 @@ export default function App() {
   const [selectedVoice, setSelectedVoice]   = useState(() => {
     try { return localStorage.getItem('st-voice') || DEFAULT_VOICE } catch { return DEFAULT_VOICE }
   })
+  const [selectedEngine, setSelectedEngine]   = useState(() => {
+    try { return localStorage.getItem('st-engine') || DEFAULT_ENGINE } catch { return DEFAULT_ENGINE }
+  })
   const [parlerReady, setParlerReady]       = useState(false)
+  const [sarvamReady, setSarvamReady]         = useState(false)
   const status = useSystemStatus()
 
   // Auto-commit: same gloss must stay confident across live windows, then
@@ -38,8 +42,13 @@ export default function App() {
   useEffect(() => {
     fetch('/api/voices').then(r => r.json()).then(d => {
       if (typeof d.parler_ready === 'boolean') setParlerReady(d.parler_ready)
+      if (typeof d.sarvam_ready === 'boolean') setSarvamReady(d.sarvam_ready)
     }).catch(() => {})
   }, [])
+
+  useEffect(() => {
+    try { localStorage.setItem('st-engine', selectedEngine) } catch { /* ignore */ }
+  }, [selectedEngine])
 
   useEffect(() => {
     try { localStorage.setItem('st-voice', selectedVoice) } catch { /* ignore */ }
@@ -132,7 +141,7 @@ export default function App() {
     try {
       const trans = await translateWord(prediction.top_label)
       setTranslation(trans)
-      await playTTS(trans, true)   // fast=true → mms-tts-kan, instant
+      await playTTS(trans)
     } catch { /* silent */ }
     setIsSpeaking(false); setSpeakingTarget(null)
   }, [prediction, isSpeaking, selectedVoice])
@@ -176,7 +185,7 @@ export default function App() {
       setSentence(updatedSentence)
 
       // Always use MMS path for reliable Speak (Parler cache may be corrupt)
-      await playTTS(fullKannada, true)
+      await playTTS(fullKannada)
 
       setHistory(prev => [
         {
@@ -197,31 +206,32 @@ export default function App() {
   const onReplayHistory = useCallback(async (kannada) => {
     if (!kannada || isSpeaking) return
     setIsSpeaking(true); setSpeakingTarget('replay')
-    try { await playTTS(kannada, true) } catch { /* silent */ }
+    try { await playTTS(kannada) } catch { /* silent */ }
     setIsSpeaking(false); setSpeakingTarget(null)
   }, [isSpeaking, selectedVoice])
 
   const onPreviewVoice = useCallback(async () => {
     if (isSpeaking) return
     setIsSpeaking(true); setSpeakingTarget('preview')
-    try { await playTTS(VOICE_SAMPLE_KN, true) } catch { /* silent */ }
+    try { await playTTS(VOICE_SAMPLE_KN) } catch { /* silent */ }
     setIsSpeaking(false); setSpeakingTarget(null)
   }, [isSpeaking, selectedVoice, parlerReady])
 
-  const playTTS = async (text, fast = true) => {
+  const playTTS = async (text) => {
     const res = await fetch('/api/tts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, voice: selectedVoice, fast })
+      body: JSON.stringify({ text, voice: selectedVoice, engine: selectedEngine })
     })
     const data = await res.json()
     if (!res.ok || !data.audio_b64) {
       throw new Error(data.detail || data.error || 'TTS failed')
     }
+    const mime = data.format === 'mp3' ? 'audio/mpeg' : 'audio/wav'
     const bytes = atob(data.audio_b64)
     const buf = new Uint8Array(bytes.length)
     for (let i = 0; i < bytes.length; i++) buf[i] = bytes.charCodeAt(i)
-    const blob = new Blob([buf], { type: 'audio/wav' })
+    const blob = new Blob([buf], { type: mime })
     const url  = URL.createObjectURL(blob)
     return new Promise((resolve, reject) => {
       const audio = new Audio(url)
@@ -258,10 +268,13 @@ export default function App() {
         libraryOpen={libraryOpen}
         onToggleLibrary={() => setLibraryOpen((v) => !v)}
         selectedVoice={selectedVoice}
+        selectedEngine={selectedEngine}
         onVoiceChange={setSelectedVoice}
+        onEngineChange={setSelectedEngine}
         onPreviewVoice={onPreviewVoice}
         isPreviewing={speakingTarget === 'preview' && isSpeaking}
         parlerReady={parlerReady}
+        sarvamReady={sarvamReady}
         voiceBusy={isSpeaking}
       />
       <main className="workspace">

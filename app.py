@@ -104,6 +104,23 @@ VOICE_PRESETS = {
 }
 DEFAULT_VOICE = "female_clear"
 
+# Sarvam Bulbul v3 — maps UI voice id → speaker name (kn-IN)
+SARVAM_SPEAKERS = {
+    "female_clear": "kavya",
+    "female_warm":  "kavitha",
+    "male_clear":   "shubh",
+    "male_deep":    "aditya",
+    "neutral":      "shubh",
+}
+SARVAM_TTS_URL = "https://api.sarvam.ai/text-to-speech"
+
+
+def sarvam_api_key() -> str:
+    return os.environ.get("SARVAM_API_KEY", "").strip()
+
+
+def sarvam_ready() -> bool:
+    return bool(sarvam_api_key())
 
 # ── model loaders ─────────────────────────────────────────────────────────────
 def sequence_model_path() -> Path:
@@ -227,42 +244,117 @@ def _mms_wav(text: str) -> bytes:
     return buf.getvalue()
 
 
-def synthesize_wav(text: str, voice: str = DEFAULT_VOICE, fast: bool = False) -> bytes:
-    """Generate Kannada speech.
-    fast=True  → mms-tts-kan (<0.5s)
-    fast=False → parler if available, else MMS
-    """
-    import torch, scipy.io.wavfile
+def _parler_wav(text: str, voice: str) -> bytes:
+    import scipy.io.wavfile
+    model, tokenizer = get_tts()
+    device = next(model.parameters()).device
+    tts_type = getattr(model, "_tts_type", "mms")
+    if tts_type != "parler":
+        raise RuntimeError("Parler TTS not loaded")
+    desc = VOICE_PRESETS.get(voice, VOICE_PRESETS[DEFAULT_VOICE])
+    input_ids = tokenizer(desc, return_tensors="pt").input_ids.to(device)
+    prompt_ids = tokenizer(text, return_tensors="pt").input_ids.to(device)
+    import torch
+    with torch.no_grad():
+        gen = model.generate(input_ids=input_ids, prompt_input_ids=prompt_ids)
+    audio = gen.cpu().numpy().squeeze().astype(np.float32)
+    sample_rate = model.config.sampling_rate
+    audio_i16 = (audio / max(np.abs(audio).max(), 1e-6) * 32767).astype(np.int16)
+    buf = io.BytesIO()
+    scipy.io.wavfile.write(buf, sample_rate, audio_i16)
+    return buf.getvalue()
 
+
+def _sarvam_audio(text: str, voice: str) -> tuple[bytes, str]:
+    """Call Sarvam Bulbul v3. Returns (audio_bytes, format)."""
+    import json
+    import urllib.error
+    import urllib.request
+
+    key = sarvam_api_key()
+    if not key:
+        raise RuntimeError("SARVAM_API_KEY not set")
+
+    speaker = SARVAM_SPEAKERS.get(voice, SARVAM_SPEAKERS[DEFAULT_VOICE])
+    payload = {
+        "text": text,
+        "target_language_code": "kn-IN",
+        "model": "bulbul:v3",
+        "speaker": speaker,
+        "pace": 1.0,
+        "speech_sample_rate": 24000,
+        "output_audio_codec": "mp3",
+    }
+    req = urllib.request.Request(
+        SARVAM_TTS_URL,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "api-subscription-key": key,
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=45) as resp:
+            body = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"Sarvam HTTP {exc.code}: {detail[:300]}") from exc
+
+    audios = body.get("audios") or []
+    if not audios:
+        raise RuntimeError(f"Sarvam returned no audio: {body}")
+
+    return base64.b64decode(audios[0]), "mp3"
+
+
+def synthesize_audio(
+    text: str,
+    voice: str = DEFAULT_VOICE,
+    engine: str = "auto",
+    fast: bool = False,
+) -> tuple[bytes, str, str]:
+    """Generate Kannada speech. Returns (audio_bytes, format, engine_used)."""
     text = (text or "").strip()
     if not text:
         raise ValueError("empty TTS text")
 
-    if fast:
-        return _mms_wav(text)
+    eng = (engine or "auto").lower()
+    if fast or eng == "mms":
+        return _mms_wav(text), "wav", "mms"
 
-    try:
-        model, tokenizer = get_tts()
-        device = next(model.parameters()).device
-        tts_type = getattr(model, "_tts_type", "mms")
+    if eng == "auto":
+        if sarvam_ready():
+            try:
+                data, fmt = _sarvam_audio(text, voice)
+                return data, fmt, "sarvam"
+            except Exception as exc:  # noqa: BLE001
+                print(f"⚠ Sarvam TTS failed ({exc})", flush=True)
+        get_tts()
+        if _parler_ok:
+            try:
+                return _parler_wav(text, voice), "wav", "parler"
+            except Exception as exc:  # noqa: BLE001
+                print(f"⚠ Parler TTS failed ({exc})", flush=True)
+        return _mms_wav(text), "wav", "mms"
 
-        if tts_type == "parler":
-            desc       = VOICE_PRESETS.get(voice, VOICE_PRESETS[DEFAULT_VOICE])
-            input_ids  = tokenizer(desc, return_tensors="pt").input_ids.to(device)
-            prompt_ids = tokenizer(text, return_tensors="pt").input_ids.to(device)
-            with torch.no_grad():
-                gen = model.generate(input_ids=input_ids, prompt_input_ids=prompt_ids)
-            audio = gen.cpu().numpy().squeeze().astype(np.float32)
-            sample_rate = model.config.sampling_rate
-            audio_i16 = (audio / max(np.abs(audio).max(), 1e-6) * 32767).astype(np.int16)
-            buf = io.BytesIO()
-            scipy.io.wavfile.write(buf, sample_rate, audio_i16)
-            return buf.getvalue()
+    if eng == "sarvam":
+        data, fmt = _sarvam_audio(text, voice)
+        return data, fmt, "sarvam"
 
-        return _mms_wav(text)
-    except Exception as exc:  # noqa: BLE001
-        print(f"⚠ TTS quality path failed ({exc}) — falling back to MMS", flush=True)
-        return _mms_wav(text)
+    if eng == "parler":
+        get_tts()
+        return _parler_wav(text, voice), "wav", "parler"
+
+    raise ValueError(f"unknown TTS engine: {engine}")
+
+
+def synthesize_wav(text: str, voice: str = DEFAULT_VOICE, fast: bool = False) -> bytes:
+    """Legacy helper — WAV bytes only (MMS/Parler)."""
+    data, fmt, _ = synthesize_audio(text, voice, engine="auto", fast=fast)
+    if fmt != "wav":
+        raise RuntimeError("synthesize_wav called but engine returned non-wav audio")
+    return data
 
 def _init_mediapipe():
     global _pose_landmarker, _hand_landmarker
@@ -435,7 +527,11 @@ async def lifespan(app: FastAPI):
         await loop.run_in_executor(None, get_classifier)
     await loop.run_in_executor(None, _init_mediapipe)
     print("▶ Preloading TTS...", flush=True)
-    await loop.run_in_executor(None, get_fast_tts)   # mms — used for live Speak
+    await loop.run_in_executor(None, get_fast_tts)   # mms fallback
+    if sarvam_ready():
+        print("✓ Sarvam Bulbul TTS configured (SARVAM_API_KEY set)", flush=True)
+    else:
+        print("ℹ Sarvam TTS off — set SARVAM_API_KEY in .env for Tier 1 voices", flush=True)
     print("✓ Fast models ready — server is live", flush=True)
     yield
     # shutdown: nothing to clean up
@@ -471,7 +567,8 @@ class TranslateBatchRequest(BaseModel):
 class TTSRequest(BaseModel):
     text: str
     voice: Optional[str] = DEFAULT_VOICE
-    fast: Optional[bool] = False   # True = mms (instant), False = parler (quality)
+    engine: Optional[str] = "auto"   # auto | sarvam | parler | mms
+    fast: Optional[bool] = False     # legacy: True forces mms
 
 
 # ── API routes ────────────────────────────────────────────────────────────────
@@ -513,6 +610,14 @@ async def api_signs():
 async def api_voices():
     # Folder can exist but be corrupt — only claim Parler if it actually loaded.
     parler_ready = bool(_parler_ok)
+    sarvam_ok = sarvam_ready()
+    default_engine = "auto"
+    if sarvam_ok:
+        active = "sarvam-bulbul-v3"
+    elif parler_ready:
+        active = "indic-parler-tts"
+    else:
+        active = "mms-tts-kan"
     return {
         "voices": [
             {"id": "female_clear", "name": "Ananya",  "description": "Female · Clear · Moderate pace"},
@@ -521,8 +626,16 @@ async def api_voices():
             {"id": "male_deep",    "name": "Ramesh",  "description": "Male · Deep · Authoritative"},
             {"id": "neutral",      "name": "Neutral", "description": "Neutral · Clear · Standard"},
         ],
+        "engines": [
+            {"id": "auto",   "name": "Auto",          "description": "Sarvam → Parler → MMS"},
+            {"id": "sarvam", "name": "Sarvam Bulbul", "description": "Best Kannada · cloud · needs API key"},
+            {"id": "parler", "name": "Indic Parler",  "description": "Local quality · ~2 GB GPU"},
+            {"id": "mms",    "name": "MMS fast",      "description": "Single voice · instant fallback"},
+        ],
         "default": DEFAULT_VOICE,
-        "engine": "indic-parler-tts" if parler_ready else "mms-tts-kan",
+        "default_engine": default_engine,
+        "engine": active,
+        "sarvam_ready": sarvam_ok,
         "parler_ready": parler_ready,
     }
 
@@ -608,12 +721,28 @@ async def api_tts(req: TTSRequest):
     if not req.text:
         raise HTTPException(400, "No text provided")
     loop = asyncio.get_event_loop()
-    # fast=True → mms (<0.5s) for single word Speak button
-    # fast=False → parler (3-6s, quality) for full Speak Sentence
-    wav_bytes = await loop.run_in_executor(
-        None, synthesize_wav, req.text, req.voice or DEFAULT_VOICE, req.fast or False)
-    b64 = base64.b64encode(wav_bytes).decode()
-    return {"audio_b64": b64, "format": "wav", "fast": req.fast}
+    try:
+        audio_bytes, fmt, engine_used = await loop.run_in_executor(
+            None,
+            synthesize_audio,
+            req.text,
+            req.voice or DEFAULT_VOICE,
+            req.engine or "auto",
+            req.fast or False,
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(502, str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(500, f"TTS failed: {exc}") from exc
+    b64 = base64.b64encode(audio_bytes).decode()
+    return {
+        "audio_b64": b64,
+        "format": fmt,
+        "engine": engine_used,
+        "fast": req.fast or False,
+    }
 
 
 @app.get("/sample/{folder}/{filename}")

@@ -7,10 +7,13 @@ export default function Header({
   libraryOpen,
   onToggleLibrary,
   selectedVoice,
+  selectedEngine,
   onVoiceChange,
+  onEngineChange,
   onPreviewVoice,
   isPreviewing,
   parlerReady,
+  sarvamReady,
   voiceBusy,
 }) {
   const ready = status.classifier && status.translation_model && status.tts_model
@@ -90,10 +93,13 @@ export default function Header({
 
           <VoicePicker
             selectedVoice={selectedVoice}
+            selectedEngine={selectedEngine}
             onVoiceChange={onVoiceChange}
+            onEngineChange={onEngineChange}
             onPreview={onPreviewVoice}
             isPreviewing={isPreviewing}
             parlerReady={parlerReady}
+            sarvamReady={sarvamReady}
             disabled={voiceBusy}
           />
 
