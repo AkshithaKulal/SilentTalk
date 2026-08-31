@@ -63,6 +63,18 @@ def git_ok_to_push() -> bool:
     name = subprocess.check_output(["git", "config", "user.name"], cwd=REPO, text=True).strip()
     email = subprocess.check_output(["git", "config", "user.email"], cwd=REPO, text=True).strip()
     log(f"git identity: {name} <{email}>")
+    # Sync with laptop commits before dry-run (office is often behind origin/main).
+    pull = subprocess.run(
+        ["git", "pull", "--rebase", "origin", "main"],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+    )
+    if pull.returncode != 0:
+        log("git pull --rebase failed. Fix conflicts, then re-run.")
+        log(pull.stderr.strip() or pull.stdout.strip())
+        return False
+    log("git pull --rebase OK")
     # Fail NOW (before hours of work) if this machine cannot push.
     dry = subprocess.run(
         ["git", "push", "--dry-run", "origin", "main"],
