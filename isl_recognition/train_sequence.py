@@ -31,6 +31,7 @@ from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, Dataset
 
 from sequence_model import SignBiLSTM, prepare_clip, save_bundle
+from torch_device import configure_for_training, gpu_summary, resolve_device
 
 NUM_RE = re.compile(r"^\s*\d+\.\s*(.+)\s*$")
 
@@ -130,6 +131,17 @@ def main() -> int:
     parser.add_argument("--batch", type=int, default=32)
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--patience", type=int, default=8)
+    parser.add_argument(
+        "--device",
+        choices=("auto", "cuda", "cpu", "gpu"),
+        default="auto",
+        help="Training device (default: cuda if available else cpu)",
+    )
+    parser.add_argument(
+        "--require-gpu",
+        action="store_true",
+        help="Exit if CUDA is not available (recommended on office PC)",
+    )
     args = parser.parse_args()
 
     if not args.landmarks.exists():
@@ -154,14 +166,28 @@ def main() -> int:
     classes = sorted(counts)
     class_to_idx = {c: i for i, c in enumerate(classes)}
     print(f"train={len(train_items)}  test={len(test_items)}  (split BEFORE any augment)")
+    print(gpu_summary())
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"device={device}")
+    device = resolve_device(args.device, require_gpu=args.require_gpu)
+    configure_for_training(device)
+    print(f"training on device={device}")
 
     train_ds = ClipDataset(train_items, class_to_idx, augment=True)
     test_ds = ClipDataset(test_items, class_to_idx, augment=False)
-    train_loader = DataLoader(train_ds, batch_size=args.batch, shuffle=True, num_workers=0)
-    test_loader = DataLoader(test_ds, batch_size=args.batch, shuffle=False, num_workers=0)
+    train_loader = DataLoader(
+        train_ds,
+        batch_size=args.batch,
+        shuffle=True,
+        num_workers=0,
+        pin_memory=device.type == "cuda",
+    )
+    test_loader = DataLoader(
+        test_ds,
+        batch_size=args.batch,
+        shuffle=False,
+        num_workers=0,
+        pin_memory=device.type == "cuda",
+    )
 
     model = SignBiLSTM(num_classes=len(classes)).to(device)
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)

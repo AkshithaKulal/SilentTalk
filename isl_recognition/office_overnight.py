@@ -22,6 +22,9 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 ISL = Path(__file__).resolve().parent
+sys.path.insert(0, str(ISL))
+from torch_device import cuda_ready, gpu_summary, resolve_device
+
 PACK = ISL / "transfer_pack"
 LOG = ISL / "artifacts" / "office_overnight.log"
 
@@ -106,6 +109,32 @@ def push_models() -> int:
     return run(["git", "push", "origin", "main"])
 
 
+def check_gpu(require: bool) -> bool:
+    log(gpu_summary())
+    if cuda_ready():
+        try:
+            import torch
+
+            name = torch.cuda.get_device_name(0)
+            mem = torch.cuda.get_device_properties(0).total_memory / (1024**3)
+            log(f"GPU OK: {name} ({mem:.1f} GB VRAM) — training will use CUDA")
+        except Exception as exc:  # noqa: BLE001
+            log(f"GPU detected but query failed: {exc}")
+        return True
+
+    msg = (
+        "CUDA not available — training would run on CPU (very slow).\n"
+        "  Fix: .\\scripts\\install_torch_cuda.ps1\n"
+        "  Or:  python setup.py\n"
+        '  Verify: python -c "import torch; print(torch.cuda.is_available())"'
+    )
+    if require:
+        log("ERROR: " + msg.replace("\n", "\n  "))
+        return False
+    log("WARNING: " + msg.replace("\n", "\n  "))
+    return True
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--root", type=Path, default=Path(r"F:\include_dataset"))
@@ -120,7 +149,18 @@ def main() -> int:
         help="Train even if extract looks like the old 5-category slice",
     )
     parser.add_argument("--epochs", type=int, default=40)
+    parser.add_argument(
+        "--allow-cpu",
+        action="store_true",
+        help="Allow CPU training if CUDA is missing (default: require GPU)",
+    )
+    parser.add_argument(
+        "--skip-landmarks",
+        action="store_true",
+        help="Skip landmark extraction (use existing .npy files)",
+    )
     args = parser.parse_args()
+    require_gpu = not args.allow_cpu
 
     extracted = args.root / "extracted"
     py = sys.executable
@@ -130,6 +170,14 @@ def main() -> int:
     log(f"dataset={args.root}")
 
     if not git_ok_to_push():
+        return 1
+
+    if not check_gpu(require_gpu):
+        return 1
+
+    try:
+        resolve_device("cuda" if cuda_ready() else "auto", require_gpu=require_gpu)
+    except SystemExit:
         return 1
 
     if args.run_prepare:
@@ -149,19 +197,22 @@ def main() -> int:
         return 1
 
     land = ISL / "landmarks"
-    if run([
-        py,
-        str(ISL / "extract_landmarks.py"),
-        "--input",
-        str(extracted),
-        "--output",
-        str(land),
-        "--skip-existing",
-    ]) != 0:
-        log("landmark extract failed — not pushing")
-        return 1
+    if not args.skip_landmarks:
+        if run([
+            py,
+            str(ISL / "extract_landmarks.py"),
+            "--input",
+            str(extracted),
+            "--output",
+            str(land),
+            "--skip-existing",
+        ]) != 0:
+            log("landmark extract failed — not pushing")
+            return 1
+    else:
+        log("skipping landmark extraction (--skip-landmarks)")
 
-    if run([
+    train_cmd = [
         py,
         str(ISL / "train_sequence.py"),
         "--landmarks",
@@ -170,7 +221,13 @@ def main() -> int:
         str(PACK),
         "--epochs",
         str(args.epochs),
-    ]) != 0:
+        "--device",
+        "cuda" if cuda_ready() else "auto",
+    ]
+    if require_gpu:
+        train_cmd.append("--require-gpu")
+
+    if run(train_cmd) != 0:
         log("training failed — not pushing")
         return 1
 

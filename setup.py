@@ -107,8 +107,23 @@ result = run([str(PY_VENV), "-c",
     "import torch; print(torch.cuda.is_available()); print(torch.__version__)"],
     check=False, capture=True)
 
-if result.returncode == 0 and "cuda" in result.stdout.lower():
-    ok(f"PyTorch already installed: {result.stdout.strip()}")
+if result.returncode == 0:
+    out = result.stdout.strip().lower()
+    has_cuda_build = "+cu" in out or "cuda" in out
+    cuda_ok = out.startswith("true")
+    if cuda_ok:
+        ok(f"PyTorch + CUDA ready: {result.stdout.strip()}")
+    elif has_cuda_build:
+        info(f"PyTorch CUDA build installed but cuda.is_available()=False — check NVIDIA driver.\n  {result.stdout.strip()}")
+    else:
+        info("Installing PyTorch 2.5.1 with CUDA 12.1 (this is ~2.5GB, may take a few minutes)...")
+        run([*PIP, "install",
+             "torch==2.5.1+cu121",
+             "torchvision==0.20.1+cu121",
+             "torchaudio==2.5.1+cu121",
+             "--index-url", "https://download.pytorch.org/whl/cu121",
+             "--quiet"])
+        ok("PyTorch + CUDA 12.1 installed")
 else:
     info("Installing PyTorch 2.5.1 with CUDA 12.1 (this is ~2.5GB, may take a few minutes)...")
     run([*PIP, "install",
