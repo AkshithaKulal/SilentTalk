@@ -65,7 +65,7 @@ def git_ok_to_push() -> bool:
     log(f"git identity: {name} <{email}>")
     # Sync with laptop commits before dry-run (office is often behind origin/main).
     pull = subprocess.run(
-        ["git", "pull", "--rebase", "origin", "main"],
+        ["git", "pull", "--rebase", "--autostash", "origin", "main"],
         cwd=REPO,
         capture_output=True,
         text=True,
