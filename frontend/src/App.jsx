@@ -27,8 +27,8 @@ export default function App() {
   // it is appended — no "Add to Sentence" click. Cooldown stops duplicates.
   const pendingRef = useRef({ label: null, count: 0 })
   const lastCommitRef = useRef({ label: null, t: 0 })
-  const AUTO_CONF = 60
-  const SAME_WORD_COOLDOWN_MS = 2800
+  const AUTO_CONF = 72
+  const SAME_WORD_COOLDOWN_MS = 3200
 
   // ── Client-side translation cache (Fix 3) ─────────────────────────────────
   // Word → Kannada translation. Avoids even the HTTP call for repeated words.
@@ -87,9 +87,15 @@ export default function App() {
   // Live predictions auto-commit. Translation still only on add/Speak, not every frame.
   const onPrediction = useCallback((data) => {
     setPrediction(data)
+    if (data?.idle || data?.uncertain) {
+      pendingRef.current = { label: null, count: 0 }
+      return
+    }
     const conf = data?.top_conf ?? 0
+    const margin = data?.margin ?? 100
     const label = (data?.top_label || '').trim()
-    if (!label || conf < AUTO_CONF) {
+    // Need confidence AND clear gap over 2nd place (stops Animal/Mouse/Cow flips)
+    if (!label || conf < AUTO_CONF || margin < 10) {
       pendingRef.current = { label: null, count: 0 }
       return
     }
@@ -98,7 +104,7 @@ export default function App() {
     } else {
       pendingRef.current = { label, count: 1 }
     }
-    const needStreak = conf >= 75 ? 1 : 2
+    const needStreak = conf >= 85 ? 2 : 3
     const now = Date.now()
     const sameAsLast = lastCommitRef.current.label === label
     const tooSoon = now - lastCommitRef.current.t < SAME_WORD_COOLDOWN_MS

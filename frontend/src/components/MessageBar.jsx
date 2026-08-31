@@ -82,7 +82,7 @@ export default function MessageBar({
                 className="kannada"
                 initial={{ opacity: 0.4, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
-                style={{ fontSize: 28, fontWeight: 800, lineHeight: 1.3 }}
+                style={{ fontSize: 24, fontWeight: 800, lineHeight: 1.3 }}
               >
                 {kannada || english}
               </motion.p>
@@ -98,7 +98,7 @@ export default function MessageBar({
                 disabled={!canSpeak}
                 whileTap={canSpeak ? { scale: 0.97 } : {}}
                 style={{
-                  minWidth: 148, height: 52, borderRadius: 14, border: "none",
+                  minWidth: 132, height: 46, borderRadius: 14, border: "none",
                   cursor: canSpeak ? "pointer" : "not-allowed",
                   background: canSpeak ? "var(--accent)" : "var(--line)",
                   color: canSpeak ? "#fff" : "var(--faint)",

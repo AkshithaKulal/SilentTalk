@@ -37,6 +37,47 @@ class SignBiLSTM(nn.Module):
         return self.head(h_cat)
 
 
+class SignBiLSTMAttn(nn.Module):
+    """V2: attention over the full sequence (hands + motion), not last step only."""
+
+    def __init__(self, num_classes: int, hidden: int = 384, layers: int = 2, dropout: float = 0.4):
+        super().__init__()
+        self.lstm = nn.LSTM(
+            FEAT_DIM,
+            hidden,
+            num_layers=layers,
+            batch_first=True,
+            bidirectional=True,
+            dropout=dropout if layers > 1 else 0.0,
+        )
+        self.attn = nn.Linear(hidden * 2, 1)
+        self.head = nn.Sequential(
+            nn.LayerNorm(hidden * 2),
+            nn.Dropout(dropout),
+            nn.Linear(hidden * 2, num_classes),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        out, _ = self.lstm(x)
+        weights = torch.softmax(self.attn(out).squeeze(-1), dim=1)
+        pooled = (out * weights.unsqueeze(-1)).sum(dim=1)
+        return self.head(pooled)
+
+
+def build_model(num_classes: int, ckpt: dict | None = None, arch: str = "bilstm", hidden: int = 256) -> nn.Module:
+    if ckpt is not None:
+        arch = ckpt.get("arch", arch)
+        hidden = int(ckpt.get("hidden", hidden))
+        layers = int(ckpt.get("layers", 2))
+        dropout = float(ckpt.get("dropout", 0.3 if arch == "bilstm" else 0.4))
+    else:
+        layers = 2
+        dropout = 0.3 if arch == "bilstm" else 0.4
+    if arch in ("bilstm_attn", "v2"):
+        return SignBiLSTMAttn(num_classes, hidden=hidden, layers=layers, dropout=dropout)
+    return SignBiLSTM(num_classes, hidden=hidden, layers=layers, dropout=dropout)
+
+
 def resample(seq: np.ndarray, length: int = SEQ_LEN) -> np.ndarray:
     if seq.ndim != 2 or seq.shape[0] == 0:
         return np.zeros((length, FEAT_DIM), dtype=np.float32)
@@ -96,17 +137,22 @@ def hflip_swap_hands(seq: np.ndarray) -> np.ndarray:
     return out
 
 
-def prepare_clip(seq: np.ndarray, augment: bool = False, rng: np.random.Generator | None = None) -> np.ndarray:
+def prepare_clip(seq: np.ndarray, augment: bool = False, rng: np.random.Generator | None = None, strong: bool = False) -> np.ndarray:
     seq = normalize_skeleton(seq)
     if augment and rng is not None:
-        if rng.random() < 0.5:
-            seq = seq + rng.normal(0, 0.01, seq.shape).astype(np.float32)
-        if rng.random() < 0.5 and seq.shape[0] >= 4:
-            factor = float(rng.uniform(0.85, 1.15))
+        noise = 0.018 if strong else 0.01
+        if rng.random() < 0.65:
+            seq = seq + rng.normal(0, noise, seq.shape).astype(np.float32)
+        if rng.random() < 0.55 and seq.shape[0] >= 4:
+            factor = float(rng.uniform(0.75, 1.25) if strong else rng.uniform(0.85, 1.15))
             new_t = max(4, int(seq.shape[0] * factor))
             seq = resample(seq, new_t)
         if rng.random() < 0.5:
             seq = hflip_swap_hands(seq)
+        if strong and rng.random() < 0.35 and seq.shape[0] >= 8:
+            t0 = int(rng.integers(0, seq.shape[0] - 3))
+            span = int(rng.integers(2, max(3, seq.shape[0] // 6)))
+            seq[t0:t0 + span] = 0
     return resample(seq, SEQ_LEN)
 
 
@@ -116,7 +162,7 @@ def load_bundle(path: Path, device: torch.device | None = None):
     except TypeError:
         ckpt = torch.load(path, map_location="cpu")
     classes = ckpt["classes"]
-    model = SignBiLSTM(num_classes=len(classes))
+    model = build_model(len(classes), ckpt=ckpt)
     model.load_state_dict(ckpt["state_dict"])
     model.eval()
     if device is None:
@@ -133,6 +179,16 @@ def predict_topk(model: nn.Module, classes: list[str], seq: np.ndarray, device: 
     prob = torch.softmax(logits, dim=0).cpu().numpy()
     idx = np.argsort(prob)[::-1][:k]
     return [(classes[i], float(prob[i])) for i in idx]
+
+
+def hand_activity(seq: np.ndarray) -> float:
+    """Fraction of frames with a non-empty hand (left or right)."""
+    if seq.ndim != 2 or seq.shape[0] == 0 or seq.shape[1] < FEAT_DIM:
+        return 0.0
+    left = np.abs(seq[:, 99:162]).sum(axis=1)
+    right = np.abs(seq[:, 162:225]).sum(axis=1)
+    present = (left > 1e-4) | (right > 1e-4)
+    return float(present.mean())
 
 
 def save_bundle(path: Path, model: nn.Module, classes: list[str], extra: dict) -> None:

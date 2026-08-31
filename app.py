@@ -268,6 +268,15 @@ def _init_mediapipe():
 
 
 # ── inference helpers ─────────────────────────────────────────────────────────
+def _hand_frame_coverage(seq: np.ndarray) -> float:
+    """Fraction of frames with at least one hand landmark present."""
+    if seq.ndim != 2 or seq.shape[0] == 0 or seq.shape[1] < 225:
+        return 0.0
+    left = np.abs(seq[:, 99:162]).sum(axis=1) > 1e-4
+    right = np.abs(seq[:, 162:225]).sum(axis=1) > 1e-4
+    return float(np.mean(left | right))
+
+
 def predict_frame_sequence(frames_bgr: list) -> list[tuple[str, float]]:
     import mediapipe as mp
     from extract_landmarks import frame_feature
@@ -288,11 +297,22 @@ def predict_frame_sequence(frames_bgr: list) -> list[tuple[str, float]]:
         return []
 
     seq = np.stack(feats)
+    hands = _hand_frame_coverage(seq)
+    # Without hands the model falls back to body pose and invents Animal/Mouse/Cow etc.
+    if hands < 0.35:
+        return [("__hands__", 0.0)]
+
     bundle = get_sequence_model()
     if bundle is not None:
         from sequence_model import predict_topk
         model, classes, device = bundle
-        return predict_topk(model, classes, seq, device, k=5)
+        preds = predict_topk(model, classes, seq, device, k=5)
+        if len(preds) >= 2:
+            margin = preds[0][1] - preds[1][1]
+            # Softmax can peak on a wrong animal class; require a clear winner.
+            if margin < 0.08 and preds[0][1] < 0.55:
+                return [(preds[0][0], preds[0][1] * 0.35)]
+        return preds
 
     from train_classifier import sequence_to_features
     x = sequence_to_features(seq).reshape(1, -1)
@@ -487,9 +507,9 @@ async def api_predict(req: PredictRequest):
         if frame is None:
             continue
         h, w = frame.shape[:2]
-        if w > 320:
-            scale = 320.0 / w
-            frame = cv2.resize(frame, (320, max(1, int(h * scale))), interpolation=cv2.INTER_AREA)
+        if w > 480:
+            scale = 480.0 / w
+            frame = cv2.resize(frame, (480, max(1, int(h * scale))), interpolation=cv2.INTER_AREA)
         frames_bgr.append(frame)
 
     if not frames_bgr:
@@ -502,10 +522,27 @@ async def api_predict(req: PredictRequest):
         raise HTTPException(500, "No predictions returned")
 
     top_label, top_conf = preds[0]
+    if top_label in ("__idle__", "__hands__") or top_conf <= 0:
+        return {
+            "top_label": "",
+            "top_conf": 0.0,
+            "top5": [],
+            "idle": True,
+            "reason": "Hands not visible — step back so head, torso, and both hands are in frame",
+        }
+
+    # Soft gate: if top-1 is weak or barely ahead of top-2, mark uncertain
+    margin = 0.0
+    if len(preds) >= 2:
+        margin = float(top_conf - preds[1][1])
+    uncertain = top_conf < 0.40 or margin < 0.08
+
     return {
         "top_label": top_label,
         "top_conf":  round(top_conf * 100, 1),
         "top5": [{"label": l, "conf": round(c * 100, 1)} for l, c in preds],
+        "margin": round(margin * 100, 1),
+        "uncertain": uncertain,
     }
 
 

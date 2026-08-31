@@ -2,12 +2,12 @@
 import { motion, AnimatePresence } from "framer-motion"
 import { Camera, Square, Loader2, Zap, Radio } from "lucide-react"
 
-const LIVE_CAPTURE_FRAMES   = 12
-const MANUAL_CAPTURE_FRAMES = 18
-const LIVE_COLLECT_MS       = 1100
-const LIVE_GAP_MS           = 200
-const FRAME_W               = 320
-const FRAME_H               = 240
+const LIVE_CAPTURE_FRAMES   = 18
+const MANUAL_CAPTURE_FRAMES = 24
+const LIVE_COLLECT_MS       = 1600
+const LIVE_GAP_MS           = 280
+const FRAME_W               = 480
+const FRAME_H               = 360
 
 export default function WebcamCapture({ selectedSign, onPrediction }) {
   const videoRef        = useRef(null)
@@ -25,53 +25,31 @@ export default function WebcamCapture({ selectedSign, onPrediction }) {
   const [nextIn, setNextIn]         = useState(0)
   const [error, setError]           = useState("")
 
-  // ── Canvas overlay ──────────────────────────────────────────────────────────
+  // ── Canvas: signing guide frame only (no bottom HUD over hands) ───────────
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
     const ctx = canvas.getContext("2d")
     ctx.clearRect(0, 0, canvas.width, canvas.height)
-    if (!livePred) return
+    if (!stream) return
 
-    const { label, conf } = livePred
-    const color = conf >= 70 ? "#047857" : conf >= 40 ? "#b45309" : "#b91c1c"
     const w = canvas.width, h = canvas.height
+    const padX = w * 0.08
+    const padTop = h * 0.06
+    const padBottom = h * 0.22
+    const gw = w - padX * 2
+    const gh = h - padTop - padBottom
 
-    // Bottom pill background
-    const pillH = 60
-    ctx.fillStyle = "rgba(255,255,255,0.92)"
-    const r = 0
-    ctx.fillRect(0, h - pillH, w, pillH)
+    ctx.strokeStyle = liveMode ? "rgba(225, 29, 72, 0.55)" : "rgba(255, 255, 255, 0.35)"
+    ctx.lineWidth = 2
+    ctx.setLineDash([10, 8])
+    ctx.strokeRect(padX, padTop, gw, gh)
+    ctx.setLineDash([])
 
-    // Left accent bar
-    ctx.fillStyle = color
-    ctx.fillRect(0, h - pillH, 4, pillH)
-
-    // Confidence fill bar
-    ctx.fillStyle = "#e2e8f0"
-    ctx.fillRect(12, h - 14, w - 24, 6)
-    ctx.fillStyle = color
-    ctx.fillRect(12, h - 14, (w - 24) * (conf / 100), 6)
-
-    // Label
-    ctx.font = "bold 20px Inter, system-ui, sans-serif"
-    ctx.fillStyle = "#0f172a"
-    ctx.fillText(label, 14, h - 32)
-
-    // Conf text
-    ctx.font = "600 12px Inter, system-ui, sans-serif"
-    ctx.fillStyle = color
-    ctx.fillText(`${conf}%`, 14, h - 18)
-
-    // Live badge
-    ctx.fillStyle = "#dc2626"
-    ctx.beginPath()
-    ctx.arc(w - 14, h - 46, 5, 0, Math.PI * 2)
-    ctx.fill()
-    ctx.font = "700 10px Inter"
-    ctx.fillStyle = "#dc2626"
-    ctx.fillText("LIVE", w - 40, h - 41)
-  }, [livePred])
+    ctx.font = "600 11px Inter, system-ui, sans-serif"
+    ctx.fillStyle = "rgba(255,255,255,0.5)"
+    ctx.fillText("Head · torso · hands in frame", padX + 8, padTop + 16)
+  }, [stream, liveMode])
 
   // ── collectFrames ─────────────────────────────────────────────────────────
   const collectFrames = useCallback((frameCount = MANUAL_CAPTURE_FRAMES, collectMs = LIVE_COLLECT_MS) => {
@@ -112,7 +90,7 @@ export default function WebcamCapture({ selectedSign, onPrediction }) {
       const data = await res.json()
       if (data.error) throw new Error(data.error)
       setError("")
-      setLivePred({ label: data.top_label, conf: data.top_conf })
+      setLivePred({ label: data.top_label, conf: data.top_conf, idle: !!data.idle, reason: data.reason || "" })
       onPredictionRef.current(data)
     } catch (e) { setError("Prediction error: " + e.message) }
   }, [])
@@ -170,7 +148,14 @@ export default function WebcamCapture({ selectedSign, onPrediction }) {
   const startCamera = async () => {
     setError("")
     try {
-      const s = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } })
+      const s = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: "user",
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        },
+        audio: false,
+      })
       setStream(s)
       if (videoRef.current) videoRef.current.srcObject = s
       setLiveMode(true)
@@ -205,64 +190,44 @@ export default function WebcamCapture({ selectedSign, onPrediction }) {
     )
   }
 
-  const btnBase = {
-    height: 44,
-    borderRadius: 10,
-    fontSize: 14,
-    fontWeight: 600,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    cursor: "pointer",
-  }
 
   return (
-    <div className="cam-col" style={{ gap: 10 }}>
-      <div
-        style={{
-          flex: 1,
-          minHeight: 0,
-          display: "flex",
-          flexDirection: "column",
-          background: "var(--surface)",
-          borderRadius: 22,
-          overflow: "hidden",
-          border: `1px solid ${liveMode ? "rgba(225,29,72,0.35)" : "var(--line)"}`,
-          boxShadow: liveMode ? "0 0 0 4px rgba(225,29,72,0.08), var(--shadow)" : "var(--shadow)",
-          transition: "border-color 0.25s ease, box-shadow 0.25s ease",
-        }}
-      >
-        <div
-          style={{
-            padding: "10px 14px",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            borderBottom: "1px solid var(--line)",
-          }}
-        >
-          <span style={{ fontSize: 13, fontWeight: 700, display: "flex", alignItems: "center", gap: 8 }}>
+    <div className="cam-col">
+      <div className={`cam-shell${liveMode ? " cam-shell--live" : ""}`}>
+        <div className="cam-toolbar">
+          <span className="cam-toolbar-title">
             {liveMode && <span className="live-pip" />}
             Camera{selectedSign ? ` · ${selectedSign.label}` : ""}
           </span>
-          {statusBadge()}
+          <div className="cam-toolbar-right">
+            {stream && (
+              <>
+                <button type="button" className="cam-toolbar-btn" onClick={stopCamera}>
+                  <Square size={12} /> Stop
+                </button>
+                <button
+                  type="button"
+                  className={`cam-toolbar-btn${liveMode ? " cam-toolbar-btn--live" : ""}`}
+                  onClick={toggleLive}
+                >
+                  <Radio size={12} />
+                  {liveMode ? "Listening" : "Go live"}
+                </button>
+              </>
+            )}
+            {statusBadge()}
+          </div>
         </div>
 
-        <div style={{ position: "relative", flex: 1, minHeight: 0, background: "#0b1220" }}>
+        <div className="cam-viewport">
           <video
             ref={videoRef}
             autoPlay
             muted
             playsInline
-            style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+            className="cam-video"
           />
-          <canvas
-            ref={canvasRef}
-            width={640}
-            height={480}
-            style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}
-          />
+          <canvas ref={canvasRef} width={1280} height={720} className="cam-guide-canvas" />
 
           {!stream && (
             <div className="stage-empty">
@@ -359,82 +324,42 @@ export default function WebcamCapture({ selectedSign, onPrediction }) {
           <AnimatePresence>
             {livePred && (
               <motion.div
-                key={livePred.label}
-                initial={{ y: 16, opacity: 0 }}
+                key={(livePred.label || "idle") + String(livePred.conf)}
+                className="cam-pred-badge"
+                initial={{ y: -8, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
                 exit={{ opacity: 0 }}
-                style={{
-                  position: "absolute",
-                  left: 12,
-                  right: 12,
-                  bottom: 12,
-                  padding: "10px 14px",
-                  borderRadius: 14,
-                  background: "rgba(255,255,255,0.92)",
-                  backdropFilter: "blur(10px)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 10,
-                }}
               >
                 <div>
-                  <div style={{ fontSize: 18, fontWeight: 800, letterSpacing: "-0.03em" }}>{livePred.label}</div>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: livePred.conf >= 70 ? "var(--ok)" : livePred.conf >= 40 ? "var(--warn)" : "var(--bad)" }}>
-                    {livePred.conf}% · {livePred.conf >= 60 ? "joining message" : "hold the sign"}
+                  <div className="cam-pred-label">
+                    {livePred.idle ? "Show hands" : (livePred.label || "…")}
+                  </div>
+                  <div
+                    className="cam-pred-conf"
+                    style={{
+                      color: livePred.idle
+                        ? "#fbbf24"
+                        : livePred.conf >= 72 ? "var(--ok)" : livePred.conf >= 40 ? "var(--warn)" : "var(--bad)",
+                    }}
+                  >
+                    {livePred.idle
+                      ? (livePred.reason || "Step back — head, torso, hands in frame")
+                      : `${livePred.conf}% · ${livePred.conf >= 72 ? "joining" : "hold sign"}`}
                   </div>
                 </div>
-                {liveMode && <span style={{ fontSize: 11, fontWeight: 800, color: "var(--live)", letterSpacing: "0.06em" }}>LIVE</span>}
+                {liveMode && !livePred.idle && <span className="cam-pred-live">LIVE</span>}
               </motion.div>
             )}
           </AnimatePresence>
         </div>
       </div>
 
-      {stream && (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-          <button
-            type="button"
-            onClick={stopCamera}
-            style={{ ...btnBase, background: "var(--surface)", border: "1px solid var(--line)", color: "var(--muted)" }}
-          >
-            <Square size={13} /> Stop
-          </button>
-          <button
-            type="button"
-            onClick={toggleLive}
-            style={{
-              ...btnBase,
-              border: liveMode ? "none" : "1px solid var(--live)",
-              background: liveMode ? "var(--live)" : "var(--surface)",
-              color: liveMode ? "#fff" : "var(--live)",
-              boxShadow: liveMode ? "0 8px 20px rgba(225,29,72,0.25)" : "none",
-            }}
-          >
-            <Radio size={13} />
-            {liveMode ? "Listening…" : "Go live"}
-          </button>
-        </div>
-      )}
-
       {stream && !liveMode && (
         <button
           type="button"
           onClick={startManualCapture}
           disabled={capturing || processing}
-          style={{
-            alignSelf: "flex-start",
-            background: "none",
-            border: "none",
-            color: "var(--muted)",
-            fontSize: 12,
-            fontWeight: 600,
-            cursor: capturing || processing ? "not-allowed" : "pointer",
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            padding: 0,
-          }}
+          className="cam-once-link"
         >
           {processing ? <Loader2 size={12} style={{ animation: "spin 1s linear infinite" }} /> : <Zap size={12} />}
           {capturing ? `${countdown}s` : "Capture once instead"}
@@ -442,15 +367,7 @@ export default function WebcamCapture({ selectedSign, onPrediction }) {
       )}
 
       {error && (
-        <div style={{ background: "var(--bad-soft)", border: "1px solid #fecaca", borderRadius: 10, padding: "10px 12px", fontSize: 13, color: "var(--bad)" }}>
-          {error}
-        </div>
-      )}
-
-      {stream && (
-        <p style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.6 }}>
-          Keep signing. Confident words join the message. Pick a voice, then Speak.
-        </p>
+        <div className="cam-error">{error}</div>
       )}
     </div>
   )

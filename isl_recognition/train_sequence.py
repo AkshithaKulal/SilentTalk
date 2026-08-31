@@ -1,18 +1,11 @@
 #!/usr/bin/env python3
-"""Train a NEW INCLUDE sequence classifier from scratch (BiLSTM).
+"""Train INCLUDE sequence classifier (v1 BiLSTM or v2 attention + official splits).
 
-This does NOT load or continue the old 84-class sklearn MLP.
-Run it on the office PC after:
-
-  1. include_prepare.py  (full zips extracted)
-  2. audit shows ~4292 videos / 263 words / 15 categories
-  3. extract_landmarks.py on F:\\include_dataset\\extracted
-
-Example:
-
+v1 (default):
   python train_sequence.py --landmarks .\\landmarks --out .\\transfer_pack
 
-Writes sign_bilstm.pt (the live app prefers this over sign_classifier.joblib).
+v2 (office production):
+  python train_sequence.py --v2 --landmarks .\\landmarks --out .\\transfer_pack --require-gpu
 """
 
 from __future__ import annotations
@@ -30,7 +23,7 @@ import torch.nn as nn
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, Dataset
 
-from sequence_model import SignBiLSTM, prepare_clip, save_bundle
+from sequence_model import build_model, prepare_clip, save_bundle
 from torch_device import configure_for_training, gpu_summary, resolve_device
 
 NUM_RE = re.compile(r"^\s*\d+\.\s*(.+)\s*$")
@@ -74,11 +67,17 @@ def load_items(land_dir: Path) -> list[tuple[Path, str]]:
 
 
 class ClipDataset(Dataset):
-    def __init__(self, items: list[tuple[Path, str]], class_to_idx: dict[str, int], augment: bool):
+    def __init__(
+        self,
+        items: list[tuple[Path, str]],
+        class_to_idx: dict[str, int],
+        augment: bool,
+        strong: bool = False,
+    ):
         self.items = items
         self.class_to_idx = class_to_idx
         self.augment = augment
-        self.rng = np.random.default_rng(0)
+        self.strong = strong
 
     def __len__(self) -> int:
         return len(self.items)
@@ -87,7 +86,7 @@ class ClipDataset(Dataset):
         path, label = self.items[idx]
         seq = np.load(path)
         rng = np.random.default_rng() if self.augment else None
-        x = prepare_clip(seq, augment=self.augment, rng=rng)
+        x = prepare_clip(seq, augment=self.augment, rng=rng, strong=self.strong)
         y = self.class_to_idx[label]
         return torch.from_numpy(x), torch.tensor(y, dtype=torch.long)
 
@@ -123,14 +122,23 @@ def eval_epoch(model, loader, device):
     return correct / n, top3 / n, top5 / n
 
 
+def class_weight_tensor(classes: list[str], counts: Counter, device) -> torch.Tensor:
+    arr = np.array([counts[c] for c in classes], dtype=np.float64)
+    w = 1.0 / np.clip(arr, 1.0, None)
+    w = w / w.mean()
+    return torch.tensor(w, dtype=torch.float32, device=device)
+
+
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Train INCLUDE BiLSTM from scratch")
+    parser = argparse.ArgumentParser(description="Train INCLUDE sequence model")
     parser.add_argument("--landmarks", type=Path, default=Path(__file__).resolve().parent / "landmarks")
     parser.add_argument("--out", type=Path, default=Path(__file__).resolve().parent / "transfer_pack")
-    parser.add_argument("--epochs", type=int, default=40)
-    parser.add_argument("--batch", type=int, default=32)
-    parser.add_argument("--lr", type=float, default=1e-3)
-    parser.add_argument("--patience", type=int, default=8)
+    parser.add_argument("--epochs", type=int, default=None)
+    parser.add_argument("--batch", type=int, default=None)
+    parser.add_argument("--lr", type=float, default=None)
+    parser.add_argument("--patience", type=int, default=None)
+    parser.add_argument("--v2", action="store_true", help="Attention BiLSTM + official splits + class weights")
+    parser.add_argument("--no-official-split", action="store_true", help="Even in v2, use random 80/20")
     parser.add_argument(
         "--device",
         choices=("auto", "cuda", "cpu", "gpu"),
@@ -144,6 +152,14 @@ def main() -> int:
     )
     args = parser.parse_args()
 
+    v2 = args.v2
+    epochs = args.epochs if args.epochs is not None else (80 if v2 else 40)
+    batch = args.batch if args.batch is not None else (48 if v2 else 32)
+    lr = args.lr if args.lr is not None else (8e-4 if v2 else 1e-3)
+    patience = args.patience if args.patience is not None else (12 if v2 else 8)
+    arch = "bilstm_attn" if v2 else "bilstm"
+    hidden = 384 if v2 else 256
+
     if not args.landmarks.exists():
         print(f"ERROR: landmarks folder not found: {args.landmarks}", file=sys.stderr)
         return 1
@@ -154,51 +170,80 @@ def main() -> int:
         return 1
 
     counts = Counter(lab for _, lab in items)
-    print(f"clips={len(items)}  classes={len(counts)}")
+    print(f"clips={len(items)}  classes={len(counts)}  mode={'v2' if v2 else 'v1'}")
     if len(counts) < 50:
         print(
-            "WARNING: fewer than 50 classes. Full INCLUDE extract is not done yet. "
-            "Do not treat this run as the production 263-class model.",
+            "WARNING: fewer than 50 classes. Full INCLUDE extract is not done yet.",
             file=sys.stderr,
         )
 
-    train_items, test_items = stratified_split(items)
+    split_name = "stratified 80/20 by word, before augment"
+    split_stats = {}
+    if v2 and not args.no_official_split:
+        sys.path.insert(0, str(Path(__file__).resolve().parent / "include_official"))
+        from official_splits import split_items as official_split_items
+
+        cache = Path(__file__).resolve().parent / "include_official" / "splits"
+        train_items, test_items, split_stats = official_split_items(items, cache)
+        print(
+            f"official split match_rate={split_stats['match_rate']:.3f}  "
+            f"train={split_stats['matched_train']} test={split_stats['matched_test']} "
+            f"unmatched_added_to_train={split_stats['unmatched']}"
+        )
+        if split_stats["matched_test"] < 100 or split_stats["match_rate"] < 0.5:
+            print("Official match too low — falling back to stratified 80/20", file=sys.stderr)
+            train_items, test_items = stratified_split(items)
+            split_name = "stratified 80/20 fallback (official match low)"
+        else:
+            split_name = "official INCLUDE train/test (+ unmatched in train)"
+    else:
+        train_items, test_items = stratified_split(items)
+
     classes = sorted(counts)
     class_to_idx = {c: i for i, c in enumerate(classes)}
-    print(f"train={len(train_items)}  test={len(test_items)}  (split BEFORE any augment)")
+    print(f"train={len(train_items)}  test={len(test_items)}  ({split_name})")
     print(gpu_summary())
 
     device = resolve_device(args.device, require_gpu=args.require_gpu)
     configure_for_training(device)
-    print(f"training on device={device}")
+    print(f"training on device={device}  arch={arch}  hidden={hidden}")
 
-    train_ds = ClipDataset(train_items, class_to_idx, augment=True)
-    test_ds = ClipDataset(test_items, class_to_idx, augment=False)
+    train_ds = ClipDataset(train_items, class_to_idx, augment=True, strong=v2)
+    test_ds = ClipDataset(test_items, class_to_idx, augment=False, strong=False)
     train_loader = DataLoader(
         train_ds,
-        batch_size=args.batch,
+        batch_size=batch,
         shuffle=True,
         num_workers=0,
         pin_memory=device.type == "cuda",
     )
     test_loader = DataLoader(
         test_ds,
-        batch_size=args.batch,
+        batch_size=batch,
         shuffle=False,
         num_workers=0,
         pin_memory=device.type == "cuda",
     )
 
-    model = SignBiLSTM(num_classes=len(classes)).to(device)
-    opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
-    loss_fn = nn.CrossEntropyLoss()
+    model = build_model(len(classes), arch=arch, hidden=hidden).to(device)
+    opt = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=2e-4 if v2 else 1e-4)
+    scheduler = (
+        torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=epochs, eta_min=lr * 0.05)
+        if v2
+        else None
+    )
+    if v2:
+        weights = class_weight_tensor(classes, counts, device)
+        loss_fn = nn.CrossEntropyLoss(weight=weights, label_smoothing=0.08)
+    else:
+        loss_fn = nn.CrossEntropyLoss()
 
     best_acc = -1.0
     best_state = None
     stale = 0
     history = []
 
-    for epoch in range(1, args.epochs + 1):
+    for epoch in range(1, epochs + 1):
         model.train()
         running = 0.0
         seen = 0
@@ -212,6 +257,8 @@ def main() -> int:
             opt.step()
             running += float(loss.item()) * y.numel()
             seen += y.numel()
+        if scheduler is not None:
+            scheduler.step()
         acc, top3, top5 = eval_epoch(model, test_loader, device)
         row = {
             "epoch": epoch,
@@ -231,7 +278,7 @@ def main() -> int:
             stale = 0
         else:
             stale += 1
-            if stale >= args.patience:
+            if stale >= patience:
                 print(f"early stop at epoch {epoch}")
                 break
 
@@ -251,7 +298,13 @@ def main() -> int:
         "test_top5": top5,
         "from_scratch": True,
         "not_the_old_mlp": True,
-        "split": "stratified 80/20 by word, before augment",
+        "version": "v2" if v2 else "v1",
+        "arch": arch,
+        "hidden": hidden,
+        "layers": 2,
+        "dropout": 0.4 if v2 else 0.3,
+        "split": split_name,
+        "split_stats": split_stats,
         "history": history,
     }
     out_path = args.out / "sign_bilstm.pt"

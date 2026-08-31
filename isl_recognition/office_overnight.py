@@ -9,12 +9,16 @@ It will not push until training succeeds. It never adds videos or landmarks.
   .\\.venv\\Scripts\\Activate.ps1    # or silent-venv, whatever the office uses
   python .\\isl_recognition\\office_overnight.py --root F:\\include_dataset
 
-At home:  git pull   then start the app. It loads sign_bilstm.pt if present.
+At home after push:  git pull   then start the app.
+
+v2 (better model, reuses landmarks):
+  python .\\isl_recognition\\office_overnight.py --root F:\\include_dataset --v2
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import subprocess
 import sys
 from datetime import datetime
@@ -112,7 +116,16 @@ def push_models() -> int:
         log("nothing new to commit (model already on this commit)")
         return run(["git", "push", "origin", "main"])
 
-    msg = "Add INCLUDE sequence model from office overnight train."
+    msg = "Add INCLUDE v2 sequence model from office overnight train." if (PACK / "sequence_train_report.json").exists() else "Add INCLUDE sequence model from office overnight train."
+    report = PACK / "sequence_train_report.json"
+    if report.exists():
+        try:
+            ver = json.loads(report.read_text(encoding="utf-8")).get("version", "v1")
+            msg = f"Add INCLUDE {ver} sequence model from office overnight train."
+        except Exception:  # noqa: BLE001
+            msg = "Add INCLUDE sequence model from office overnight train."
+    else:
+        msg = "Add INCLUDE sequence model from office overnight train."
     if run(["git", "commit", "-m", msg]) != 0:
         return 1
     if run(["git", "pull", "--rebase", "origin", "main"]) != 0:
@@ -160,7 +173,12 @@ def main() -> int:
         action="store_true",
         help="Train even if extract looks like the old 5-category slice",
     )
-    parser.add_argument("--epochs", type=int, default=40)
+    parser.add_argument("--epochs", type=int, default=None)
+    parser.add_argument(
+        "--v2",
+        action="store_true",
+        help="Production v2: attention BiLSTM, official splits, class weights (skips landmarks if already done)",
+    )
     parser.add_argument(
         "--allow-cpu",
         action="store_true",
@@ -173,13 +191,23 @@ def main() -> int:
     )
     args = parser.parse_args()
     require_gpu = not args.allow_cpu
+    if args.epochs is None:
+        args.epochs = 80 if args.v2 else 40
 
     extracted = args.root / "extracted"
     py = sys.executable
     log("=" * 72)
-    log(f"office overnight start  python={py}")
+    log(f"office overnight start  python={py}  v2={args.v2}")
     log(f"repo={REPO}")
     log(f"dataset={args.root}")
+
+    # v2 reuses landmarks from the first overnight run
+    if args.v2 and not args.skip_landmarks:
+        land_probe = ISL / "landmarks"
+        n_npy = len(list(land_probe.glob("*.npy"))) if land_probe.is_dir() else 0
+        if n_npy >= 3000:
+            args.skip_landmarks = True
+            log(f"v2: found {n_npy} landmark files — skipping extract")
 
     if not git_ok_to_push():
         return 1
@@ -236,6 +264,8 @@ def main() -> int:
         "--device",
         "cuda" if cuda_ready() else "auto",
     ]
+    if args.v2:
+        train_cmd.append("--v2")
     if require_gpu:
         train_cmd.append("--require-gpu")
 
