@@ -11,7 +11,8 @@ ISL sign recognition → English gloss → Kannada translation → speech (Sarva
 | Tool | Version | Notes |
 |------|---------|--------|
 | **Python** | 3.10+ | [python.org](https://python.org) |
-| **Node.js** | 18+ | For frontend build ([nodejs.org](https://nodejs.org)) |
+| **Node.js** | 18+ | Auto-installed on Windows via `winget` during setup |
+| **MSVC Build Tools** | — | Auto-installed on Windows (needed for IndicTransToolkit) |
 | **Git** | any | Clone the repo |
 | **NVIDIA GPU** | 6–8 GB VRAM | Recommended (translate + optional Parler TTS) |
 | **HF token** | — | [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens) |
@@ -26,10 +27,16 @@ cd SilentTalk
 
 ### 2. Setup (one time)
 
-**Windows (recommended):**
+**Windows (recommended — run PowerShell as Administrator on a fresh PC):**
 
 ```powershell
 .\setup.ps1
+```
+
+Skip automatic Node.js / MSVC install (manual prereqs):
+
+```powershell
+.\setup.ps1 -SkipSystemDeps
 ```
 
 **Or cross-platform:**
@@ -40,6 +47,7 @@ python setup.py
 
 This will:
 
+- Auto-install **Node.js LTS** and **Microsoft C++ Build Tools** on Windows (via `winget`)
 - Create `silent-venv/` and install Python packages (`requirements-app.txt`)
 - Install PyTorch with CUDA 12.1 (if needed)
 - Install IndicTransToolkit

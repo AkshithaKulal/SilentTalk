@@ -1,0 +1,19 @@
+{
+  "model": "sign_bilstm.pt",
+  "arch": "bilstm_attn v2",
+  "eval_type": "verification_set_videos",
+  "clips": 18,
+  "top1_acc": 0.9444444444444444,
+  "top3_acc": 1.0,
+  "top5_acc": 1.0,
+  "training_landmark_test_acc": 0.9315403422982885,
+  "misclassified": [
+    {
+      "label": "I",
+      "predicted": "you",
+      "confidence_pct": 67.3,
+      "in_top3": true
+    }
+  ],
+  "note": "One video per sign folder; MediaPipe extract + BiLSTM. Harder than landmark-only test split."
+}
