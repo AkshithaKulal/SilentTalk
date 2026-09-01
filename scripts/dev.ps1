@@ -23,9 +23,10 @@ switch ($Target) {
         Write-Host "=== SilentTalk backend (API + models) ===" -ForegroundColor Cyan
         Write-Host "Port 5000 — sign predict, translate, TTS" -ForegroundColor Gray
         Write-Host "Open UI at http://localhost:5173 (run: .\scripts\dev.ps1 frontend)" -ForegroundColor Yellow
+        Write-Host "Phone HTTPS: python app.py --https" -ForegroundColor Yellow
         Write-Host ""
-        if (Test-Path ".\.venv\Scripts\Activate.ps1") { . .\.venv\Scripts\Activate.ps1 }
-        elseif (Test-Path ".\silent-venv\Scripts\Activate.ps1") { . .\silent-venv\Scripts\Activate.ps1 }
+        if (Test-Path ".\silent-venv\Scripts\Activate.ps1") { . .\silent-venv\Scripts\Activate.ps1 }
+        elseif (Test-Path ".\.venv\Scripts\Activate.ps1") { . .\.venv\Scripts\Activate.ps1 }
         python app.py
     }
     "frontend" {

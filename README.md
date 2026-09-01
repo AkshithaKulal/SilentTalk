@@ -1,109 +1,182 @@
 # SilentTalk
 
-Local + Colab pipeline for ISL → Kannada/Tulu transfer learning (IndicTrans2 LoRA).
+ISL sign recognition → English gloss → Kannada translation → speech (Sarvam / Parler / MMS).
 
-## Repo: code only
+---
 
-Large artifacts are **not** in git (see `.gitignore`):
-- `model_cache/` (re-download from Hugging Face)
-- `stage1_data/`, `stage2_data/`, `samanantar_en_kn.csv`
-- `stage1_output/`, `stage2_output/`, `stage2_kn_tcy_output/` checkpoints
+## Live app — quick start (clone → setup → run)
 
-Copy those separately (Drive/USB) to the 56GB machine if needed, or rebuild.
+### Prerequisites
 
-## Clone on the other machine
+| Tool | Version | Notes |
+|------|---------|--------|
+| **Python** | 3.10+ | [python.org](https://python.org) |
+| **Node.js** | 18+ | For frontend build ([nodejs.org](https://nodejs.org)) |
+| **Git** | any | Clone the repo |
+| **NVIDIA GPU** | 6–8 GB VRAM | Recommended (translate + optional Parler TTS) |
+| **HF token** | — | [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens) |
+| **Sarvam API key** | optional | Best Kannada TTS — [dashboard.sarvam.ai](https://dashboard.sarvam.ai) |
 
-```bash
+### 1. Clone
+
+```powershell
 git clone https://github.com/AkshithaKulal/SilentTalk.git
-cd SilentTalk/IndicTrans2/huggingface_interface
+cd SilentTalk
 ```
 
-## Setup (Windows PowerShell)
+### 2. Setup (one time)
+
+**Windows (recommended):**
 
 ```powershell
-$env:HF_TOKEN = "hf_xxxxxxxx"   # your Hugging Face token
-python -m pip install -e IndicTransToolkit_repo
-python -m pip install "transformers==4.53.2" "peft==0.15.2" "torchao==0.9.0" sacrebleu datasets accelerate sentencepiece
-# Install torch with CUDA matching that machine
+.\setup.ps1
 ```
 
-Download base model:
+**Or cross-platform:**
 
 ```powershell
-python download_model.py
+python setup.py
 ```
 
-## Pipeline overview
+This will:
 
-| Stage | Direction | Data | Output |
-|-------|-----------|------|--------|
-| 1 | EN→Kannada (`eng_Latn`→`kan_Knda`) | Samanantar | `stage1_output/checkpoint-1500` |
-| 2 (real) | KN→Tulu (`kan_Knda`→`brx_Deva` alias) | `kn_tcy_raw.csv` (organizers; no public mirror) | `stage2_kn_tcy_output/` |
-| 2 (historical) | EN→Tulu-in-`kan_Knda` slot | synthetic ~19k | `stage2_output/checkpoint-3000` (BLEU ~0.84; incomplete) |
+- Create `silent-venv/` and install Python packages (`requirements-app.txt`)
+- Install PyTorch with CUDA 12.1 (if needed)
+- Install IndicTransToolkit
+- Download MediaPipe hand/pose models
+- Download LoRA adapter if missing (`checkpoint-1500-inference/`)
+- Run `npm install` + `npm run build` for the React UI
 
-**Tulu tag:** IndicTrans2 has no `tcy_Knda`. Tulu uses stand-in tag `brx_Deva` with processor override to ISO `kn` (see `tulu_lang_alias.py`). Not real Bodo.
+### 3. Configure `.env`
 
-## Stage 2 (real KN→Tulu)
+Copy template and edit (never commit `.env`):
 
-```powershell
-# Drop DravidianLangTech KN–TCY as kn_tcy_raw.csv (columns: kannada,tulu)
-python prepare_stage2_data.py --mode real
-.\run_stage2_train.ps1
-python test_stage2_inference.py
-python test_stage2_quality.py
+```env
+HF_TOKEN=hf_xxxxxxxx
+SARVAM_API_KEY=sk_xxxxxxxx
 ```
 
-If real CSV is missing (degraded / non-competitive continuity only):
+- **HF_TOKEN** — required on first run (downloads IndicTrans2 + TTS models)
+- **SARVAM_API_KEY** — optional; best Kannada pronunciation (Bulbul v3)
+
+### 4. Run
+
+**Production (laptop / demo — one port):**
 
 ```powershell
-python prepare_stage2_data.py --mode synthetic_degraded
-.\run_stage2_train_synthetic.ps1
+.\silent-venv\Scripts\Activate.ps1
+python app.py
 ```
 
-## Important scripts
+Open **http://localhost:5000**
 
-| Script | Purpose |
-|--------|---------|
-| `train_lora.py` | LoRA training (Tulu alias override when `brx_Deva` is used) |
-| `tulu_lang_alias.py` | `brx_Deva`↔Tulu mapping + `kn` processor override |
-| `prepare_stage2_data.py` | `--mode real` or `synthetic_degraded` |
-| `run_train.ps1` / `resume_train.ps1` | Stage 1 train / resume |
-| `run_stage2_train.ps1` | Real KN→Tulu from Stage 1 ckpt-1500 |
-| `run_stage2_train_synthetic.ps1` | Degraded EN→Tulu continuity |
-| `test_inference.py` | Domain EN→KN check |
-| `test_stage2_inference.py` / `test_stage2_quality.py` | KN→Tulu eval |
-| `synthetic_en_tulu_fixed.csv` | Synthetic EN–Tulu (~19k) |
-| `stage2_output/RESULTS.md` | Metrics + alias documentation |
-
-## Security
-
-Never commit HF tokens. Use `$env:HF_TOKEN` / `export HF_TOKEN=...`.
-
-## ISL Demo: Predict To Spoken Tulu
-
-For a full junior-friendly INCLUDE workflow (setup -> audit -> extraction -> training -> prediction -> speech), see:
-
-`isl_recognition/INCLUDE_PIPELINE_RUNBOOK.md`
-
-Prerequisite (from repo root):
+**Phone camera on same Wi-Fi (HTTPS required):**
 
 ```powershell
-. .\.venv\Scripts\Activate.ps1
+python app.py --https
+```
+
+Open **https://YOUR_LAN_IP:5000** on phone (accept certificate warning).
+
+**Development (UI hot-reload):**
+
+```powershell
+# Terminal 1
+.\scripts\dev.ps1 backend
+
+# Terminal 2
+.\scripts\dev.ps1 frontend
+```
+
+Open **http://localhost:5173** (not 5000 — Vite proxies `/api` to backend).
+
+### 5. Rebuild UI after frontend changes
+
+```powershell
+cd frontend
+npm run build
+cd ..
+python app.py
+```
+
+---
+
+## What gets installed
+
+| Component | Package / source |
+|-----------|------------------|
+| Web API | FastAPI + Uvicorn |
+| Sign model | `isl_recognition/transfer_pack/sign_bilstm.pt` (in git) |
+| Landmarks | MediaPipe (CPU) |
+| Translation | IndicTrans2 + LoRA `checkpoint-1500-inference/` |
+| TTS Tier 1 | Sarvam Bulbul (cloud, `.env`) |
+| TTS Tier 2 | Indic Parler (local GPU, optional) |
+| TTS fallback | MMS Kannada (`facebook/mms-tts-kan`) |
+
+**First run downloads** (~4–8 GB total from Hugging Face): translation base model, MMS TTS, optionally Parler.
+
+---
+
+## ISL training only (office PC)
+
+For landmark extraction + BiLSTM training (not needed to run the live app):
+
+```powershell
+.\silent-venv\Scripts\Activate.ps1
 python -m pip install -r isl_recognition\requirements.txt
 ```
 
-Run sign prediction with mapped Kannada-script Tulu sentence:
+Full INCLUDE workflow: `isl_recognition/INCLUDE_PIPELINE_RUNBOOK.md`
+
+---
+
+## Translation / LoRA training (IndicTrans2)
+
+Large artifacts are **not** in git (see `.gitignore`):
+
+- `model_cache/`, `stage1_data/`, `stage2_data/`
+- Training checkpoints under `stage1_output/`, `stage2_output/`
+
+### Clone for training setup
 
 ```powershell
-python isl_recognition\predict_tulu_speech.py --video isl_recognition\artifacts\thankyou_demo.mp4 --artifacts isl_recognition\artifacts --mapping isl_recognition\artifacts\tulu_sentence_map_kn.json --top-k 5
+git clone https://github.com/AkshithaKulal/SilentTalk.git
+cd SilentTalk
+.\setup_env.ps1
 ```
 
-Enable speech output:
+Then follow `IndicTrans2/huggingface_interface/README.md`.
+
+### Pipeline overview
+
+| Stage | Direction | Data | Output |
+|-------|-----------|------|--------|
+| 1 | EN→Kannada | Samanantar | `stage1_output/checkpoint-1500` |
+| 2 (real) | KN→Tulu | `kn_tcy_raw.csv` | `stage2_kn_tcy_output/` |
+| 2 (synthetic) | EN→Tulu | synthetic ~19k | `stage2_output/checkpoint-3000` |
+
+**Tulu tag:** stand-in `brx_Deva` with processor override — see `tulu_lang_alias.py`.
+
+### Important training scripts
+
+| Script | Purpose |
+|--------|---------|
+| `train_lora.py` | LoRA training |
+| `prepare_stage2_data.py` | `--mode real` or `synthetic_degraded` |
+| `run_train.ps1` / `run_stage2_train.ps1` | Stage 1 / 2 training |
+
+## Security
+
+Never commit `.env`, API keys, or HF tokens.
 
 ```powershell
-python isl_recognition\predict_tulu_speech.py --video isl_recognition\artifacts\thankyou_demo.mp4 --artifacts isl_recognition\artifacts --mapping isl_recognition\artifacts\tulu_sentence_map_kn.json --top-k 5 --speak
+$env:HF_TOKEN = "hf_xxx"   # or use .env file
 ```
 
-Notes:
-- If top-1 label is missing in mapping, the script falls back through top-k labels.
-- If no mapped sentence is found, the script prints a warning and exits without crashing.
+---
+
+## Legacy CLI demo (Tulu speech script)
+
+```powershell
+python isl_recognition\predict_tulu_speech.py --video isl_recognition\demo_input\demo_video.mp4 --artifacts isl_recognition\transfer_pack --mapping isl_recognition\artifacts\tulu_sentence_map_kn.json --top-k 5 --speak
+```

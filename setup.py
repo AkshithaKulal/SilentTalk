@@ -135,47 +135,44 @@ else:
     ok("PyTorch + CUDA 12.1 installed")
 
 # ── Core packages ─────────────────────────────────────────────────────────────
-packages = [
-    # Web framework
-    "fastapi==0.115.12",
-    "uvicorn[standard]==0.34.3",
-    "python-multipart==0.0.20",
-    # Computer vision
-    "opencv-python==4.10.0.84",
-    "mediapipe==1.0.1",
-    # ML
-    "scikit-learn==1.9.0",
-    "joblib==1.5.3",
-    "numpy<2.0",          # pin for sklearn/joblib compatibility
-    "scipy>=1.11",
-    # HuggingFace
-    "transformers==4.46.1",
-    "huggingface_hub>=0.36",
-    "peft==0.15.2",
-    "datasets",
-    "accelerate",
-    # TTS
-    "parler-tts==0.2.3",
-    # Misc
-    "flask>=3.0",         # kept for legacy compat
-    "gdown",
-    "sacrebleu",
-    "nltk",
-    "sacremoses",
-    "indic-nlp-library",
-]
-
-info(f"Installing {len(packages)} packages...")
-for pkg in packages:
-    name = pkg.split("==")[0].split(">=")[0].split("<")[0]
-    print(f"     Installing {name}...", end=" ", flush=True)
-    result = run([*PIP, "install", pkg, "--quiet"], check=False)
-    if result.returncode == 0:
-        print(green("done"))
-    else:
-        print(yellow("warn — may already be installed"))
-
-ok("Core packages done")
+req_file = ROOT / "requirements-app.txt"
+if req_file.exists():
+    info(f"Installing from {req_file.name}...")
+    run([*PIP, "install", "-r", str(req_file), "--quiet"])
+    ok("requirements-app.txt installed")
+else:
+    packages = [
+        "fastapi==0.115.12",
+        "uvicorn[standard]==0.34.3",
+        "python-multipart==0.0.20",
+        "opencv-python==4.10.0.84",
+        "mediapipe>=0.10.30",
+        "scikit-learn>=1.5.0",
+        "joblib>=1.3.0",
+        "numpy<2.0",
+        "scipy>=1.11",
+        "transformers==4.46.1",
+        "huggingface_hub>=0.36",
+        "peft==0.15.2",
+        "datasets",
+        "accelerate",
+        "parler-tts==0.2.3",
+        "gdown",
+        "sacrebleu",
+        "nltk",
+        "sacremoses",
+        "indic-nlp-library",
+    ]
+    info(f"Installing {len(packages)} packages...")
+    for pkg in packages:
+        name = pkg.split("==")[0].split(">=")[0].split("<")[0]
+        print(f"     Installing {name}...", end=" ", flush=True)
+        result = run([*PIP, "install", pkg, "--quiet"], check=False)
+        if result.returncode == 0:
+            print(green("done"))
+        else:
+            print(yellow("warn — may already be installed"))
+    ok("Core packages done")
 
 # ── IndicTransToolkit ─────────────────────────────────────────────────────────
 info("Installing IndicTransToolkit from local repo...")
@@ -231,29 +228,36 @@ else:
         warn("Manually place checkpoint-1500-inference/ at repo root.")
         warn("Drive link: https://drive.google.com/drive/folders/1RgEDcwom1ny6IFfnSvFyfTNzYAeA4DPd")
 
-# ── Step 6: Classifier artifacts ─────────────────────────────────────────────
-section("Step 6/9 — ISL classifier artifacts")
+# ── Step 6: Sign model artifacts ──────────────────────────────────────────────
+section("Step 6/9 — ISL sign model")
+bilstm = ROOT / "isl_recognition" / "transfer_pack" / "sign_bilstm.pt"
 clf_path = ROOT / "isl_recognition" / "transfer_pack" / "sign_classifier.joblib"
-le_path  = ROOT / "isl_recognition" / "transfer_pack" / "label_encoder.joblib"
-if clf_path.exists() and le_path.exists():
-    ok("sign_classifier.joblib and label_encoder.joblib present")
+if bilstm.exists():
+    ok("sign_bilstm.pt present (BiLSTM — live app default)")
+elif clf_path.exists():
+    ok("sign_classifier.joblib present (legacy MLP fallback)")
 else:
-    warn("Classifier artifacts missing!")
-    warn("These are created by training. If you have the INCLUDE dataset:")
-    warn("  python isl_recognition/train_classifier.py --landmarks isl_recognition/landmarks --out-dir isl_recognition/transfer_pack")
-    warn("Or pull from GitHub if trained artifacts are committed.")
+    warn("No sign model in isl_recognition/transfer_pack/")
+    warn("Pull latest from git or train: python isl_recognition/train_sequence.py")
 
 # ── Step 7: HuggingFace .env ──────────────────────────────────────────────────
-section("Step 7/9 — HuggingFace token (.env)")
+section("Step 7/9 — Environment (.env)")
 env_file = ROOT / ".env"
+template = (
+    "HF_TOKEN=your_huggingface_token_here\n"
+    "SARVAM_API_KEY=your_sarvam_api_key_here\n"
+)
 if env_file.exists():
     ok(".env file already present")
+    text = env_file.read_text(encoding="utf-8")
+    if "SARVAM_API_KEY" not in text:
+        env_file.write_text(text.rstrip() + "\nSARVAM_API_KEY=your_sarvam_api_key_here\n", encoding="utf-8")
+        warn("Added SARVAM_API_KEY line to .env — fill in for Bulbul TTS (optional)")
 else:
     warn(".env file missing — creating template")
-    env_file.write_text("HF_TOKEN=your_huggingface_token_here\n")
-    warn("Edit .env and replace 'your_huggingface_token_here' with your HF token.")
-    warn("Get token at: https://huggingface.co/settings/tokens")
-    warn("Accept model access at: https://huggingface.co/ai4bharat/indic-parler-tts-pretrained")
+    env_file.write_text(template, encoding="utf-8")
+    warn("Edit .env: HF_TOKEN (required for first model download)")
+    warn("Optional: SARVAM_API_KEY for best Kannada TTS (https://dashboard.sarvam.ai)")
 
 # ── Step 8: Node.js frontend ──────────────────────────────────────────────────
 section("Step 8/9 — Frontend (Node.js + React build)")
@@ -285,8 +289,11 @@ else:
 section("Step 9/9 — Final verification")
 
 checks = {
-    "sign_classifier.joblib":    ROOT / "isl_recognition/transfer_pack/sign_classifier.joblib",
-    "label_encoder.joblib":      ROOT / "isl_recognition/transfer_pack/label_encoder.joblib",
+    "sign model (BiLSTM or MLP)": (
+        ROOT / "isl_recognition/transfer_pack/sign_bilstm.pt"
+        if (ROOT / "isl_recognition/transfer_pack/sign_bilstm.pt").exists()
+        else ROOT / "isl_recognition/transfer_pack/sign_classifier.joblib"
+    ),
     "hand_landmarker.task":      ROOT / "isl_recognition/models/hand_landmarker.task",
     "pose_landmarker.task":      ROOT / "isl_recognition/models/pose_landmarker_lite.task",
     "LoRA checkpoint":           ROOT / "checkpoint-1500-inference/adapter_model.safetensors",
@@ -309,20 +316,22 @@ if all_ok:
 ╔══════════════════════════════════════════════════════════╗
 ║  ✓  Setup Complete — Everything is ready!               ║
 ╠══════════════════════════════════════════════════════════╣
-║  To run SilentTalk:                                      ║
+║  Run (production — one port):                            ║
+║    Windows:  .\\silent-venv\\Scripts\\activate          ║
+║              python app.py                                 ║
+║    Open:     http://localhost:5000                       ║
 ║                                                          ║
-║  Windows:                                                ║
-║    .venv\\Scripts\\activate                               ║
-║    python app.py                                         ║
+║  Phone camera on Wi-Fi:                                    ║
+║              python app.py --https                       ║
+║    Open:     https://YOUR_LAN_IP:5000                    ║
 ║                                                          ║
-║  Linux / Mac:                                            ║
-║    source .venv/bin/activate                             ║
-║    python app.py                                         ║
+║  Dev (UI hot-reload):                                    ║
+║    Terminal 1: .\\scripts\\dev.ps1 backend               ║
+║    Terminal 2: .\\scripts\\dev.ps1 frontend              ║
+║    Open:       http://localhost:5173                     ║
 ║                                                          ║
-║  Then open: http://localhost:5000                        ║
-║                                                          ║
-║  NOTE: First run downloads translation model (~4.5GB)   ║
-║        from HuggingFace. Keep internet connected.        ║
+║  First run downloads ~4–8 GB models from HuggingFace.    ║
+║  Edit .env: HF_TOKEN + optional SARVAM_API_KEY.        ║
 ╚══════════════════════════════════════════════════════════╝
 """)))
 else:
